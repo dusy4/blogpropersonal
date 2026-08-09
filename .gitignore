@@ -1,0 +1,10 @@
+node_modules/
+astro/node_modules/
+astro/dist/
+.vercel/
+.env
+.env.*
+!.env.example
+.DS_Store
+astro/public/llms.txt
+astro/public/llms-full.txt
