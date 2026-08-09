@@ -1,5 +1,5 @@
 import { SETUP_SECRET, SITE_URL, WEBHOOK_SECRET } from './_lib/config';
-import { deleteCommands, deleteWebhook, getWebhookInfo, setWebhook } from './_lib/telegram';
+import { deleteCommands, deleteWebhook, getWebhookInfo, resetMenuButton, setWebhook } from './_lib/telegram';
 
 export default {
   async fetch(request: Request) {
@@ -20,7 +20,8 @@ export default {
         if (!SITE_URL || !WEBHOOK_SECRET) throw new Error('SITE_URL and WEBHOOK_SECRET must be configured first.');
         const webhookUrl = `${SITE_URL}/api/telegram`;
         const registered = await setWebhook(webhookUrl, WEBHOOK_SECRET);
-        await deleteCommands(); // Button CMS; no command menu.
+        await deleteCommands();
+        await resetMenuButton();
         result = { webhookUrl, registered, current: await getWebhookInfo() };
       } else if (action === 'delete') {
         result = { deleted: await deleteWebhook(), current: await getWebhookInfo() };
