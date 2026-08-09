@@ -40,3 +40,4 @@ export const setWebhook = (url: string, secret: string) =>
 export const deleteWebhook = () => call('deleteWebhook', { drop_pending_updates: true });
 export const getWebhookInfo = () => call('getWebhookInfo');
 export const deleteCommands = () => call('deleteMyCommands');
+export const resetMenuButton = () => call('setChatMenuButton', { menu_button: { type: 'default' } });
