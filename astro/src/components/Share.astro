@@ -1,0 +1,12 @@
+---
+interface Props { title: string; url: string; }
+const { title, url } = Astro.props;
+const encodedUrl = encodeURIComponent(url);
+const encodedTitle = encodeURIComponent(title);
+---
+<div class="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-6">
+  <span class="text-sm font-semibold text-slate-700">Поділитися:</span>
+  <a class="btn-secondary !px-3 !py-2" href={`https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`} target="_blank" rel="noopener noreferrer">Telegram</a>
+  <a class="btn-secondary !px-3 !py-2" href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`} target="_blank" rel="noopener noreferrer">LinkedIn</a>
+  <a class="btn-secondary !px-3 !py-2" href={`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}`} target="_blank" rel="noopener noreferrer">X</a>
+</div>

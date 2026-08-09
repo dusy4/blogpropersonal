@@ -1,0 +1,41 @@
+---
+import '../styles/global.css';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '../config';
+
+interface Props {
+  title?: string;
+  description?: string;
+  canonicalPath?: string;
+  image?: string;
+}
+
+const {
+  title = SITE_NAME,
+  description = SITE_DESCRIPTION,
+  canonicalPath = '/',
+  image,
+} = Astro.props;
+const pageTitle = title === SITE_NAME ? title : `${title} — ${SITE_NAME}`;
+const canonical = new URL(canonicalPath, SITE_URL).toString();
+---
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <title>{pageTitle}</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {image && <meta property="og:image" content={image} />}
+    <meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
+    <slot name="head" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

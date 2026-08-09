@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# Overwritten during production prebuild with SITE_URL/sitemap.xml

@@ -1,0 +1,19 @@
+---
+import { getCollection, render } from 'astro:content';
+import CaseLayout from '../../layouts/CaseLayout.astro';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('cases');
+  return entries.map((entry) => ({
+    params: { slug: entry.data.slug || entry.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '') },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const slug = entry.data.slug || entry.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+---
+<CaseLayout title={entry.data.title} slug={slug} description={entry.data.description} date={entry.data.date} client={entry.data.client} result={entry.data.result} image={entry.data.image}>
+  <Content />
+</CaseLayout>

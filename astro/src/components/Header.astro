@@ -1,0 +1,13 @@
+---
+import { SITE_NAME } from '../config';
+---
+<header class="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+  <div class="container-site flex h-16 items-center justify-between gap-6">
+    <a href="/" class="text-lg font-black tracking-tight text-slate-950">{SITE_NAME}</a>
+    <nav class="flex items-center gap-5 text-sm font-medium text-slate-600" aria-label="Main navigation">
+      <a class="hover:text-slate-950" href="/#articles">Статті</a>
+      <a class="hover:text-slate-950" href="/#cases">Кейси</a>
+      <a class="hover:text-slate-950" href="/llms.txt">llms.txt</a>
+    </nav>
+  </div>
+</header>

@@ -1,0 +1,78 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import ArticleCard from '../components/ArticleCard.astro';
+import CaseCard from '../components/CaseCard.astro';
+import { SITE_DESCRIPTION, SITE_NAME, TELEGRAM_CHANNEL_URL } from '../config';
+
+const articles = (await getCollection('articles')).sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+const cases = (await getCollection('cases')).sort((a, b) => (b.data.date?.getTime() || 0) - (a.data.date?.getTime() || 0));
+const slugFor = (id: string, explicit?: string) => explicit || id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+---
+<Layout title={SITE_NAME} description={SITE_DESCRIPTION} canonicalPath="/">
+  <Header />
+  <main>
+    <section class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white">
+      <div class="container-site py-20 sm:py-28">
+        <p class="eyebrow">AI integration knowledge base</p>
+        <h1 class="mt-4 max-w-4xl text-5xl font-black tracking-[-0.04em] text-slate-950 sm:text-7xl">Практичні AI-інтеграції без зайвого шуму.</h1>
+        <p class="mt-6 max-w-2xl text-lg leading-8 text-slate-600">Статті, технічні розбори та реальні кейси про автоматизацію процесів, AI-асистентів і впровадження AI у бізнес.</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="#articles" class="btn-primary">Читати статті</a>
+          <a href="#cases" class="btn-secondary">Дивитися кейси</a>
+          <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" class="btn-secondary">Telegram ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="articles" class="scroll-mt-20 py-16 sm:py-20">
+      <div class="container-site">
+        <div class="max-w-2xl">
+          <p class="eyebrow">Articles</p>
+          <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Статті</h2>
+          <p class="mt-3 text-slate-600">Answer-First матеріали з Key Takeaways, структурованими заголовками та JSON-LD для пошуку й AI-парсерів.</p>
+        </div>
+        {articles.length ? (
+          <div class="mt-9 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {articles.map((entry) => <ArticleCard title={entry.data.title} slug={slugFor(entry.id, entry.data.slug)} date={entry.data.date} keyTakeaways={entry.data.keyTakeaways} author={entry.data.author} />)}
+          </div>
+        ) : (
+          <p class="mt-8 rounded-2xl border border-dashed border-slate-300 p-8 text-slate-500">Статей ще немає. Опублікуйте першу через Telegram CMS.</p>
+        )}
+      </div>
+    </section>
+
+    <section id="cases" class="scroll-mt-20 border-y border-slate-200 bg-slate-50 py-16 sm:py-20">
+      <div class="container-site">
+        <div class="max-w-2xl">
+          <p class="eyebrow">Cases</p>
+          <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Кейси</h2>
+          <p class="mt-3 text-slate-600">Окремий блок кейсів знаходиться прямо на головній сторінці, як і в структурі проєкту.</p>
+        </div>
+        {cases.length ? (
+          <div class="mt-9 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {cases.map((entry) => <CaseCard title={entry.data.title} slug={slugFor(entry.id, entry.data.slug)} description={entry.data.description} result={entry.data.result} client={entry.data.client} />)}
+          </div>
+        ) : (
+          <p class="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-slate-500">Кейсів ще немає. Опублікуйте перший через Telegram CMS.</p>
+        )}
+      </div>
+    </section>
+
+    <section class="py-16 sm:py-20">
+      <div class="container-site">
+        <div class="rounded-3xl bg-slate-950 px-7 py-10 text-white sm:px-10 sm:py-12">
+          <p class="eyebrow !text-blue-300">For humans and AI agents</p>
+          <h2 class="mt-3 max-w-2xl text-3xl font-black tracking-tight sm:text-4xl">Контент доступний як сайт, Markdown-derived llms.txt і повний llms-full.txt.</h2>
+          <div class="mt-7 flex flex-wrap gap-3">
+            <a href="/llms.txt" class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950">Open llms.txt</a>
+            <a href="/llms-full.txt" class="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white">Open llms-full.txt</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</Layout>
