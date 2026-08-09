@@ -9,11 +9,17 @@ body {
 }
 ::selection { @apply bg-blue-100 text-blue-950; }
 
-.container-site { @apply mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8; }
+.container-site { @apply mx-auto w-full max-w-6xl px-5; }
+@media (min-width: 640px) { .container-site { @apply px-6; } }
+@media (min-width: 1024px) { .container-site { @apply px-8; } }
+
 .eyebrow { @apply text-xs font-semibold uppercase tracking-[0.18em] text-blue-700; }
-.card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md; }
-.btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700; }
-.btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:border-slate-950; }
+.card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm transition; }
+.card:hover { @apply -translate-y-0.5 shadow-md; }
+.btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition; }
+.btn-primary:hover { @apply bg-blue-700; }
+.btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition; }
+.btn-secondary:hover { @apply border-slate-950; }
 
 .prose { color:#334155; line-height:1.8; }
 .prose h2 { margin-top:2.2rem; margin-bottom:.8rem; font-size:1.65rem; line-height:1.25; font-weight:800; color:#0f172a; }
