@@ -17,7 +17,8 @@ export default {
     try {
       let result: unknown;
       if (action === 'register') {
-        if (!SITE_URL || !WEBHOOK_SECRET) throw new Error('Спочатку налаштуйте SITE_URL і WEBHOOK_SECRET.');
+        if (!SITE_URL) throw new Error('Не вдалося визначити production URL. На Vercel він має визначатися автоматично.');
+        if (!WEBHOOK_SECRET) throw new Error('Спочатку налаштуйте WEBHOOK_SECRET.');
         const webhookUrl = `${SITE_URL}/api/telegram`;
         const registered = await setWebhook(webhookUrl, WEBHOOK_SECRET);
         await deleteCommands();
@@ -36,7 +37,7 @@ export default {
 };
 
 function setupPage() {
-  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Налаштування ProPersonal</title>${styles()}</head><body><main><h1>Налаштування Telegram для ProPersonal</h1><p>Ця сторінка змінює webhook, який Telegram зберігає для бота. Секрети Vercel тут не відображаються.</p><form method="post"><label>SETUP_SECRET<input name="secret" type="password" required autocomplete="current-password"></label><div class="buttons"><button name="action" value="register">Зареєструвати / перереєструвати webhook</button><button name="action" value="status">Перевірити стан webhook</button><button class="danger" name="action" value="delete">Видалити webhook</button></div></form><p class="small">Після зміни SITE_URL, TELEGRAM_BOT_TOKEN або WEBHOOK_SECRET у Vercel: спочатку зробіть повторний деплой, потім поверніться сюди й натисніть «Зареєструвати / перереєструвати webhook».</p></main></body></html>`;
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Налаштування ProPersonal</title>${styles()}</head><body><main><h1>Налаштування Telegram для ProPersonal</h1><p>Ця сторінка змінює webhook, який Telegram зберігає для бота. Production URL береться з Vercel автоматично; SITE_URL потрібен лише як опційний override. Секрети Vercel тут не відображаються.</p><form method="post"><label>SETUP_SECRET<input name="secret" type="password" required autocomplete="current-password"></label><div class="buttons"><button name="action" value="register">Зареєструвати / перереєструвати webhook</button><button name="action" value="status">Перевірити стан webhook</button><button class="danger" name="action" value="delete">Видалити webhook</button></div></form><p class="small">Після заміни TELEGRAM_BOT_TOKEN або WEBHOOK_SECRET: зробіть redeploy і перереєструйте webhook. Після додавання custom domain Vercel автоматично використовує production domain для нових URL; за бажанням перереєструйте webhook, щоб Telegram також зберіг саме custom-domain endpoint.</p></main></body></html>`;
 }
 
 function resultPage(title: string, output: string) {
