@@ -30,7 +30,13 @@ export const editMessageText = (
   messageId: number,
   text: string,
   extra: Record<string, unknown> = {},
-) => call('editMessageText', { chat_id: chatId, message_id: messageId, text, ...extra });
+) => {
+  const deleting = text.match(/^⏳ Видаляю «(.+)» і чекаю Vercel deployment…$/s);
+  const visibleText = deleting
+    ? `✅ Видалення «${deleting[1]}» відправлено.\n\nСайт оновиться протягом 1–2 хв.`
+    : text;
+  return call('editMessageText', { chat_id: chatId, message_id: messageId, text: visibleText, ...extra });
+};
 
 export const editMessageReplyMarkup = (
   chatId: number | string,
