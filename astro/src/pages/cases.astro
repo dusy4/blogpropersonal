@@ -1,43 +1,38 @@
+---
 export const prerender = true;
 
----
 import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import { SITE_NAME, UI } from '../config';
 
-const cases = await getCollection('cases');
-const sorted = cases.sort((a, b) => new Date(b.data.date || 0).getTime() - new Date(a.data.date || 0).getTime());
+const sorted = (await getCollection('cases'))
+  .sort((a,b)=>new Date(b.data.date||0).getTime()-new Date(a.data.date||0).getTime());
 ---
 
-<Layout title="Кейси — ProPersonal Agency" description="Реальні кейси впровадження AI та автоматизації для бізнесу.">
+<Layout title={`${UI.casesTitle} — ${SITE_NAME}`} description={UI.casesDescription}>
   <Header slot="header" />
   <section class="mx-auto max-w-7xl px-4 py-16 lg:px-8">
-    <h1 class="text-4xl font-bold text-brand">Кейси</h1>
-    <p class="mt-4 max-w-2xl text-muted">
-      Приклади реалізацій, де AI та автоматизація допомогли клієнтам зростати швидше, зменшити витрати та покращити досвід їхніх клієнтів.
-    </p>
+    <h1 class="text-4xl font-bold text-brand">{UI.casesTitle}</h1>
+    <p class="mt-4 max-w-2xl text-muted">{UI.casesDescription}</p>
 
     {sorted.length === 0 ? (
-      <div class="mt-12 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-        <p class="text-muted">Ще немає опублікованих кейсів. Скоро додамо перші приклади.</p>
-      </div>
+      <div class="mt-12 rounded-2xl border border-slate-200 bg-white p-12 text-center"><p class="text-muted">{UI.emptyCases}</p></div>
     ) : (
       <div class="mt-10 grid gap-8 md:grid-cols-2">
-        {sorted.map((c) => (
-          <article class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-            {c.data.image && (
-              <img src={c.data.image} alt={c.data.title} class="h-48 w-full object-cover" />
-            )}
+        {sorted.map((c)=>(
+          <article class="relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            {c.data.url && <a href={c.data.url} target="_blank" rel="noopener" class="absolute inset-0 z-10" aria-label={`Відкрити кейс: ${c.data.title}`}></a>}
+            {c.data.image && <img src={c.data.image} alt={c.data.title} class="h-48 w-full object-cover" />}
             <div class="p-6">
-              <h2 class="text-xl font-semibold text-brand">{c.data.title}</h2>
+              <div class="flex items-start justify-between gap-4">
+                <h2 class="text-xl font-semibold text-brand">{c.data.title}</h2>
+                {c.data.url && <span class="text-lg text-brand" aria-hidden="true">↗</span>}
+              </div>
               {c.data.client && <p class="mt-1 text-sm text-muted">{c.data.client}</p>}
               <p class="mt-3 text-muted">{c.data.description}</p>
-              {c.data.result && (
-                <div class="mt-4 rounded-lg bg-surface p-3 text-sm text-slate-700">
-                  <span class="font-semibold text-brand">Результат:</span> {c.data.result}
-                </div>
-              )}
+              {c.data.result && <div class="mt-4 rounded-lg bg-surface p-3 text-sm text-slate-700"><span class="font-semibold text-brand">Результат:</span> {c.data.result}</div>}
             </div>
           </article>
         ))}
