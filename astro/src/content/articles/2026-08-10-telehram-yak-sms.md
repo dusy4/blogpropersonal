@@ -1,7 +1,7 @@
 ---
 title: "Телеграм як смs"
 slug: "telehram-yak-sms"
-date: "2026-08-10"
+date: "2026-08-10T14:57:08.000Z"
 keyTakeaways: "Телеграм хороший інструмент"
 author: "ProPersonal"
 ---
