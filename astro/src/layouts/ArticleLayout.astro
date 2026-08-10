@@ -10,11 +10,13 @@ export interface Props {
   author: string;
   keyTakeaways: string;
   slug: string;
+  image?: string;
 }
 
-const { title, date, author, keyTakeaways, slug } = Astro.props;
+const { title, date, author, keyTakeaways, slug, image } = Astro.props;
 const url = `${SITE_URL}/articles/${slug}`;
 const dateIso = date.toISOString();
+const imageUrl = image ? new URL(image, `${SITE_URL}/`).toString() : undefined;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -23,6 +25,7 @@ const jsonLd = {
   author: { '@type': 'Person', name: author },
   datePublished: dateIso,
   description: keyTakeaways,
+  ...(imageUrl ? { image: imageUrl } : {}),
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
 };
 ---
@@ -39,6 +42,8 @@ const jsonLd = {
       <div class="article-meta">
         <span>{author}</span><span>•</span><time datetime={dateIso}>{date.toLocaleDateString('uk-UA')}</time>
       </div>
+
+      {image && <img class="article-cover" src={image} alt={title} loading="eager" decoding="async" />}
 
       <div class="key-takeaways">
         <h2>Ключові висновки</h2>
