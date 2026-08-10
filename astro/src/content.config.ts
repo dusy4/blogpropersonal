@@ -24,6 +24,7 @@ const cases = defineCollection({
     description: z.string(),
     result: z.string().optional(),
     image: z.string().optional(),
+    url: z.string().url().optional(),
   }),
 });
 
