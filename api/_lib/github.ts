@@ -109,8 +109,12 @@ export async function deleteFile(path: string, sha: string, message: string) {
 }
 
 function readFrontmatterValue(source: string, key: string) {
-  const match = source.match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+)["']?\\s*$`, 'm'));
-  return (match?.[1] || '').replace(/\\"/g, '"').trim();
+  const match = source.match(new RegExp(`^${key}:\\s*(.+?)\\s*$`, 'm'));
+  if (!match) return '';
+  const raw = match[1].trim();
+  const quoted = (raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"));
+  const value = quoted ? raw.slice(1, -1) : raw;
+  return value.replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
 }
 
 function filenameSlug(name: string) {
