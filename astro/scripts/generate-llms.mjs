@@ -7,7 +7,7 @@ const ARTICLE_DIR = path.join(ROOT, 'src/content/articles');
 const CASE_DIR = path.join(ROOT, 'src/content/cases');
 
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+const MODEL = process.env.ANHROPIC_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const SITE_URL = normalizeSiteUrl(
   process.env.SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || 'https://example.com',
 );
@@ -45,13 +45,13 @@ for (const doc of cases) caseEntries.push(await makeLlmsEntry(doc));
 const llms = [
   '# ProPersonal','',
   '> Практична база знань про AI-інтеграції, автоматизацію бізнес-процесів, статті та кейси.','',
-  '## Articles','',...(articleEntries.length ? articleEntries : ['- No articles published yet.']),'',
-  '## Cases','',...(caseEntries.length ? caseEntries : ['- No cases published yet.']),'',
-  '## Full content','',
-  `- [llms-full.txt](${SITE_URL}/llms-full.txt): Full Markdown-derived text of all published articles and cases.`,'',
+  '## Статті','',...(articleEntries.length ? articleEntries : ['- Статей ще немає.']),'',
+  '## Кейси','',...(caseEntries.length ? caseEntries : ['- Кейсів ще немає.']),'',
+  '## Повний вміст','',
+  `- [llms-full.txt](${SITE_URL}/llms-full.txt): Повний текст усіх опублікованих статей і кейсів, зібраний із Markdown.`,'',
 ].join('\n');
 
-const full = ['# ProPersonal — full content','',`Source site: ${SITE_URL}`,'',...articles.flatMap(fullBlock),...cases.flatMap(fullBlock)].join('\n');
+const full = ['# ProPersonal — повний вміст','',`Джерело: ${SITE_URL}`,'',...articles.flatMap(fullBlock),...cases.flatMap(fullBlock)].join('\n');
 await fs.writeFile(path.join(PUBLIC, 'llms.txt'), llms, 'utf8');
 await fs.writeFile(path.join(PUBLIC, 'llms-full.txt'), full, 'utf8');
 await fs.writeFile(path.join(PUBLIC, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`, 'utf8');
@@ -114,7 +114,7 @@ async function claude(system, content, maxTokens) {
 }
 
 function normalizeEntry(output,title,url,fallback){const cleaned=output.replace(/^```(?:markdown)?\s*/i,'').replace(/```$/i,'').trim();const line=cleaned.split('\n').find((value)=>value.trim().startsWith('- ['));return line?line.trim():`- [${title}](${url}): ${oneLine(cleaned||fallback)}`;}
-function fullBlock(doc){const title=doc.meta.title||doc.slug;return [`## ${title}`,'',`Canonical URL: ${doc.url}`,'',doc.raw.trim(),'','---',''];}
+function fullBlock(doc){const title=doc.meta.title||doc.slug;return [`## ${title}`,'',`Канонічна URL: ${doc.url}`,'',doc.raw.trim(),'','---',''];}
 async function injectFrontmatterField(file,key,value){const raw=await fs.readFile(file,'utf8');const escaped=String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\r?\n/g,' ');if(/^---\n/.test(raw)){const end=raw.indexOf('\n---',4);if(end!==-1){await fs.writeFile(file,`${raw.slice(0,end)}\n${key}: "${escaped}"${raw.slice(end)}`,'utf8');return;}}throw new Error(`Cannot inject ${key}: invalid frontmatter in ${file}`);}
 function fallbackSummary(markdown){return oneLine(markdown.replace(/```[\s\S]*?```/g,' ').replace(/\[([^\]]+)]\([^)]*\)/g,'$1').replace(/[#>*_`~|\-]/g,' ')).slice(0,360);}
 function oneLine(value){return String(value).replace(/\s+/g,' ').trim();}
