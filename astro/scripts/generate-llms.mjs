@@ -7,7 +7,7 @@ const ARTICLE_DIR = path.join(ROOT, 'src/content/articles');
 const CASE_DIR = path.join(ROOT, 'src/content/cases');
 
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const MODEL = process.env.ANHROPIC_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const SITE_URL = normalizeSiteUrl(
   process.env.SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || 'https://example.com',
 );
