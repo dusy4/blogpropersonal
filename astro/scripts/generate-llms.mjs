@@ -100,7 +100,10 @@ async function loadDocs(dir, type) {
     const raw = await fs.readFile(file, 'utf8');
     const { meta, body } = parseMarkdown(raw);
     const slug = meta.slug || name.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
-    docs.push({ file, raw, meta, body, slug, type, url: `${SITE_URL}/${type}/${slug}` });
+    const url = type === 'articles'
+      ? `${SITE_URL}/articles/${slug}`
+      : `${SITE_URL}/#case-${slug}`;
+    docs.push({ file, raw, meta, body, slug, type, url });
   }
   return docs;
 }
