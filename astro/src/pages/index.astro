@@ -6,230 +6,89 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ArticleCard from '../components/ArticleCard.astro';
-import { TELEGRAM_CHANNEL_URL, CONTACT_EMAIL } from '../config';
 
-const articles = await getCollection('articles');
-const sorted = articles
-  .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime())
-  .slice(0, 3);
-const slugFor = (post: any) => post.data.slug || post.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+const articles = (await getCollection('articles'))
+  .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
 
-const stats = [
-  { value: '90+', label: 'Реалізованих рішень' },
-  { value: '240+', label: 'Задоволених клієнтів' },
-  { value: '80+', label: 'Інтеграцій з AI' },
-  { value: '90%', label: 'Зростання ефективності' },
-];
+const cases = (await getCollection('cases'))
+  .sort((a, b) => new Date(b.data.date || 0).getTime() - new Date(a.data.date || 0).getTime());
 
-const services = [
-  { icon: '🤖', title: 'AI-асистенти', desc: 'Чат-боти та голосові помічники для підтримки клієнтів.' },
-  { icon: '📈', title: 'Автоматизація продажів', desc: 'Інтеграція AI в CRM та воронки продажів.' },
-  { icon: '📊', title: 'Аналітика даних', desc: 'Автоматична обробка звернень та зворотного звʼязку.' },
-  { icon: '🧠', title: 'Консалтинг', desc: 'Аудит процесів та дорожня карта впровадження AI.' },
-];
-
-const advantages = [
-  { icon: '', title: 'Швидкість запуску', desc: 'Перші результати вже через 2–4 тижні.' },
-  { icon: '💰', title: 'Зниження витрат', desc: 'Автоматизація рутини зменшує операційні витрати.' },
-  { icon: '', title: 'Точність рішень', desc: 'AI аналізує дані та пропонує дієві інсайти.' },
-  { icon: '🤝', title: 'Супровід 24/7', desc: 'Підтримка та оптимізація після запуску.' },
-];
-
-const audience = [
-  { title: 'Власники бізнесу', desc: 'Тим, хто хоче зменшити рутину та пришвидшити зростання.', image: 'https://images.unsplash.com/photo-1556761175-5973dc0dc740?auto=format&fit=crop&w=600&q=80' },
-  { title: 'Маркетингові команди', desc: 'Для автоматизації комунікацій та аналітики кампаній.', image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=600&q=80' },
-  { title: 'Sales відділи', desc: 'Хто шукає інструменти для прискорення продажів.', image: 'https://images.unsplash.com/photo-1521737604893-14bd8d3f4735?auto=format&fit=crop&w=600&q=80' },
-  { title: 'Стартапи', desc: 'Для швидкого масштабування без збільшення штату.', image: 'https://images.unsplash.com/photo-1519389950473-74fd6f8e3c5d?auto=format&fit=crop&w=600&q=80' },
-];
-
-const testimonials = [
-  { name: 'Олена К.', role: 'CMO, RetailTech', text: 'AI-асистент значно зменшив навантаження на підтримку та пришвидшив відповіді клієнтам.' },
-  { name: 'Андрій М.', role: 'Sales Director, FinFlow', text: 'Автоматизація воронки дозволила закривати угоди швидше без додаткових менеджерів.' },
-  { name: 'Марина С.', role: 'Founder, EduSpark', text: 'Команда швидко зрозуміла наші процеси та запропонувала рішення, яке працює.' },
-];
-
-const cases = [
-  { title: 'AI-чат для e-commerce', desc: 'Автоматична підтримка 24/7 та збір замовлень.', image: 'https://images.unsplash.com/photo-1556742049-0cf9c8e3e0a4?auto=format&fit=crop&w=600&q=80' },
-  { title: 'Автоматизація CRM', desc: 'Інтеграція AI для кваліфікації лідів.', image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80' },
-  { title: 'Аналітика зворотного звʼязку', desc: 'AI аналізує відгуки та формує інсайти для продукту.', image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80' },
-];
+const slugFor = (entry: any) =>
+  entry.data.slug || entry.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
 ---
 
-<Layout>
+<Layout
+  title="Блог — ProPersonal Agency"
+  description="Статті та кейси про AI-інтеграції, автоматизацію та практичне застосування AI у бізнесі."
+>
   <Header slot="header" />
 
-  <section class="relative overflow-hidden bg-brand-dark text-white">
-    <div class="absolute inset-0">
-      <img src="https://images.unsplash.com/photo-1519389950473-74fd6f8e3c5d?auto=format&fit=crop&w=1600&q=80" alt="Office background" class="h-full w-full object-cover opacity-30" />
-      <div class="absolute inset-0 bg-gradient-to-r from-brand-dark/90 to-brand-dark/70"></div>
-    </div>
-    <div class="relative mx-auto max-w-7xl px-4 py-24 lg:px-8">
+  <section id="articles" class="bg-white py-14 md:py-16">
+    <div class="mx-auto max-w-7xl px-4 lg:px-8">
       <div class="max-w-2xl">
-        <h1 class="text-4xl font-bold leading-tight md:text-6xl">Розумні AI-інтеграції для компаній, що хочуть бути на крок попереду</h1>
-        <p class="mt-6 text-lg text-slate-200">Від ручних процесів до розумних автоматизованих рішень. Допомагаємо бізнесу використовувати штучний інтелект для зростання продажів та підтримки клієнтів.</p>
-        <div class="mt-8 flex flex-wrap gap-4">
-          <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="btn-primary">Обговорити проєкт</a>
-          <a href="/articles" class="btn-secondary border-white text-white hover:bg-white hover:text-brand">Блог</a>
-        </div>
+        <h1 class="text-4xl font-bold text-brand md:text-5xl">Блог</h1>
+        <p class="mt-4 text-muted">Статті та практичні матеріали про AI-інтеграції й автоматизацію.</p>
       </div>
-      <div class="mt-12 grid grid-cols-2 gap-4 md:grid-cols-4">
-        {stats.map((s) => (
-          <div class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-            <p class="text-2xl font-bold text-accent md:text-3xl">{s.value}</p>
-            <p class="mt-1 text-sm text-slate-300">{s.label}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
 
-  <section class="bg-white py-16">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <div class="grid items-center gap-12 lg:grid-cols-2">
-        <div>
-          <h2 class="text-3xl font-bold text-brand md:text-4xl">Pro Personal Agency — від ручних процесів до розумних автоматизованих рішень</h2>
-          <p class="mt-4 text-muted">Ми допомагаємо компаніям інтегрувати штучний інтелект у повсякденні процеси: від обслуговування клієнтів до аналітики та продажів.</p>
-          <ul class="mt-6 space-y-3 text-slate-700">
-            <li class="flex items-center gap-2"><span class="text-accent">✓</span> Глибокий аудит бізнес-процесів</li>
-            <li class="flex items-center gap-2"><span class="text-accent">✓</span> Швидкі інтеграції без зайвої бюрократії</li>
-            <li class="flex items-center gap-2"><span class="text-accent">✓</span> Супровід та навчання команди</li>
-          </ul>
-        </div>
-        <div class="overflow-hidden rounded-2xl shadow-xl">
-          <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80" alt="Team working" class="h-full w-full object-cover" />
-        </div>
+      <div class="mt-10 flex items-end justify-between gap-4">
+        <h2 class="text-2xl font-bold text-brand md:text-3xl">Статті</h2>
+        <a href="/articles" class="text-sm font-medium text-brand hover:text-brand-light">Усі статті →</a>
       </div>
-    </div>
-  </section>
 
-  <section class="bg-surface py-16">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <h2 class="text-center text-3xl font-bold text-brand md:text-4xl">Наші послуги</h2>
-      <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {services.map((s) => (
-          <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition hover:shadow-md">
-            <div class="text-3xl">{s.icon}</div>
-            <h3 class="mt-4 text-lg font-semibold text-brand">{s.title}</h3>
-            <p class="mt-2 text-sm text-muted">{s.desc}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="relative overflow-hidden bg-brand-dark py-20 text-white">
-    <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1497366216548-3d70f5f3ef2a?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center opacity-20"></div>
-    <div class="relative mx-auto max-w-4xl px-4 text-center lg:px-8">
-      <h2 class="text-3xl font-bold md:text-4xl">Зробіть свій крок до розумних рішень</h2>
-      <p class="mt-4 text-slate-200">Залиште контакт — допоможемо знайти точку зростання для вашого бізнесу.</p>
-      <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-        <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="btn-primary w-full sm:w-auto">Обговорити проєкт у Telegram</a>
-        <a href="tel:+380000000000" class="btn-secondary w-full border-white text-white hover:bg-white hover:text-brand sm:w-auto">+38 (000) 000-00-00</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="bg-white py-16">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <h2 class="text-3xl font-bold text-brand md:text-4xl">Переваги співпраці з нашою компанією:</h2>
-      <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {advantages.map((a) => (
-          <div class="rounded-2xl border border-slate-100 bg-surface p-6">
-            <div class="text-3xl">{a.icon}</div>
-            <h3 class="mt-4 text-lg font-semibold text-brand">{a.title}</h3>
-            <p class="mt-2 text-sm text-muted">{a.desc}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="bg-surface py-16">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <h2 class="text-center text-3xl font-bold text-brand md:text-4xl">Для кого?</h2>
-      <div class="mt-10 grid gap-6 md:grid-cols-2">
-        {audience.map((a) => (
-          <div class="overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">
-            <img src={a.image} alt={a.title} class="h-48 w-full object-cover" />
-            <div class="p-6">
-              <h3 class="text-lg font-semibold text-brand">{a.title}</h3>
-              <p class="mt-2 text-sm text-muted">{a.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="bg-white py-16">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <div class="flex items-end justify-between">
-        <h2 class="text-3xl font-bold text-brand md:text-4xl">Наші кейси</h2>
-        <a href="/cases" class="text-sm font-medium text-brand hover:text-brand-light">Усі кейси →</a>
-      </div>
-      <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {cases.map((c) => (
-          <div class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-            <img src={c.image} alt={c.title} class="h-48 w-full object-cover" />
-            <div class="p-6">
-              <h3 class="text-lg font-semibold text-brand">{c.title}</h3>
-              <p class="mt-2 text-sm text-muted">{c.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="bg-brand-dark py-16 text-white">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <h2 class="text-center text-3xl font-bold md:text-4xl">Відгуки</h2>
-      <div class="mt-10 grid gap-6 md:grid-cols-3">
-        {testimonials.map((t) => (
-          <div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-            <p class="text-slate-100">“{t.text}”</p>
-            <div class="mt-4">
-              <p class="font-semibold">{t.name}</p>
-              <p class="text-sm text-slate-300">{t.role}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="bg-surface py-16">
-    <div class="mx-auto max-w-7xl px-4 lg:px-8">
-      <div class="flex items-end justify-between">
-        <h2 class="text-3xl font-bold text-brand md:text-4xl">Останні публікації</h2>
-        <a href="/articles" class="text-sm font-medium text-brand hover:text-brand-light">Усі публікації →</a>
-      </div>
-      {sorted.length === 0 ? (
-        <div class="mt-10 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-          <p class="text-muted">Статті з’являться після першої публікації через Telegram-бот.</p>
+      {articles.length === 0 ? (
+        <div class="mt-8 rounded-2xl border border-slate-200 bg-surface p-10 text-center">
+          <p class="text-muted">Статей ще немає.</p>
         </div>
       ) : (
-        <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {sorted.map((post) => (
-            <ArticleCard title={post.data.title} href={`/articles/${slugFor(post)}`} excerpt={post.data.keyTakeaways} date={new Date(post.data.date)} />
+        <div class="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {articles.map((post) => (
+            <ArticleCard
+              title={post.data.title}
+              href={`/articles/${slugFor(post)}`}
+              excerpt={post.data.keyTakeaways}
+              date={new Date(post.data.date)}
+            />
           ))}
         </div>
       )}
     </div>
   </section>
 
-  <section class="bg-white py-16" id="contact">
-    <div class="mx-auto max-w-3xl px-4 lg:px-8">
-      <h2 class="text-center text-3xl font-bold text-brand md:text-4xl">Зв’яжіться з нами</h2>
-      <p class="mt-4 text-center text-muted">Заповніть форму — ми зв’яжемося з вами протягом дня.</p>
-      <form action={`mailto:${CONTACT_EMAIL}`} method="post" enctype="text/plain" class="mt-10 space-y-4 rounded-2xl border border-slate-100 bg-surface p-6 shadow-sm">
-        <div class="grid gap-4 md:grid-cols-2">
-          <input type="text" name="name" placeholder="Ваше ім’я" required class="w-full rounded-lg border border-slate-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand" />
-          <input type="tel" name="phone" placeholder="Телефон" required class="w-full rounded-lg border border-slate-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand" />
+  <section id="cases" class="border-t border-slate-100 bg-surface py-14 md:py-16">
+    <div class="mx-auto max-w-7xl px-4 lg:px-8">
+      <div class="flex items-end justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-brand md:text-3xl">Кейси</h2>
+          <p class="mt-3 text-muted">Практичні приклади реалізованих AI-рішень та автоматизацій.</p>
         </div>
-        <textarea name="message" placeholder="Повідомлення" rows="4" required class="w-full rounded-lg border border-slate-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand"></textarea>
-        <button type="submit" class="btn-primary w-full">Надіслати</button>
-      </form>
+        <a href="/cases" class="text-sm font-medium text-brand hover:text-brand-light">Усі кейси →</a>
+      </div>
+
+      {cases.length === 0 ? (
+        <div class="mt-8 rounded-2xl border border-slate-200 bg-white p-10 text-center">
+          <p class="text-muted">Кейсів ще немає.</p>
+        </div>
+      ) : (
+        <div class="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {cases.map((entry) => (
+            <article class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              {entry.data.image && (
+                <img src={entry.data.image} alt={entry.data.title} class="h-44 w-full object-cover" />
+              )}
+              <div class="p-6">
+                <h3 class="text-lg font-semibold text-brand">{entry.data.title}</h3>
+                {entry.data.client && <p class="mt-1 text-sm text-muted">{entry.data.client}</p>}
+                <p class="mt-3 text-sm leading-6 text-muted">{entry.data.description}</p>
+                {entry.data.result && (
+                  <div class="mt-4 rounded-lg bg-surface p-3 text-sm text-slate-700">
+                    <span class="font-semibold text-brand">Результат:</span> {entry.data.result}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   </section>
 
