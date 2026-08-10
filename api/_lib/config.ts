@@ -66,7 +66,7 @@ export const CMS = {
   articleFields: {
     title: { label: 'Заголовок', button: '✏️ Заголовок', maxLength: 160 },
     keyTakeaways: { label: 'Ключові висновки', button: '🧠 Ключові висновки', maxLength: 1000 },
-    body: { label: 'Текст статті', button: '📝 Текст', maxLength: 4096 },
+    body: { label: 'Текст статті', button: '📝 Текст + H2/H3', maxLength: 4096 },
   },
 
   caseDraftTitle: '🧩 Чернетка кейсу',
