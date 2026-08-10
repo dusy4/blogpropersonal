@@ -12,8 +12,12 @@ export default {
     const url = new URL(request.url);
     const token = url.searchParams.get('token') || '';
 
-    // Do not expose a setup UI or even confirm that the protected endpoint exists.
+    // Never log either secret value. These booleans are only for deployment diagnostics.
     if (request.method !== 'GET' || !SETUP_SECRET || token !== SETUP_SECRET) {
+      console.warn('set-webhook auth rejected', {
+        setupSecretConfigured: Boolean(SETUP_SECRET),
+        tokenProvided: Boolean(token),
+      });
       return new Response(JSON.stringify({ error: 'not_found' }), { status: 404, headers });
     }
 
