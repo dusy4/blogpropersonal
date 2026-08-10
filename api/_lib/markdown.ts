@@ -33,20 +33,27 @@ export function parseSubmission(message: TelegramMessage) {
   const entities = (message.entities ?? message.caption_entities ?? []) as Entity[];
 
   // Channel CMS contract:
-  // 1st paragraph = H1/title
-  // 2nd paragraph = Key Takeaways
-  // everything after that = article body; ## / ### remain Markdown headings.
+  // 1st paragraph = H1/title.
+  // Remaining paragraphs = article body.
+  // If the final paragraph starts with the canonical `Ключові висновки:` label,
+  // extract it from the body and use it as manually supplied Key Takeaways.
+  // Otherwise the caller may generate Key Takeaways with Claude.
   const first = splitFirstParagraph(raw, 0);
-  const second = splitFirstParagraph(raw, first.nextStart);
-  const bodyStart = skipParagraphWhitespace(raw, second.nextStart);
-  const bodyText = raw.slice(bodyStart).trimEnd();
+  const bodyStart = skipParagraphWhitespace(raw, first.nextStart);
+  const trailingTakeaways = extractTrailingKeyTakeaways(raw, bodyStart);
+  const bodyEnd = trailingTakeaways?.paragraphStart ?? raw.length;
+  const bodyText = raw.slice(bodyStart, bodyEnd).trimEnd();
   const bodyEntities = entities
-    .filter((entity) => entity.offset >= bodyStart && SENDABLE.has(entity.type))
+    .filter((entity) => (
+      entity.offset >= bodyStart
+      && entity.offset + entity.length <= bodyEnd
+      && SENDABLE.has(entity.type)
+    ))
     .map((entity) => ({ ...entity, offset: entity.offset - bodyStart }));
 
   return {
     title: stripInlineMarkdown(first.value),
-    keyTakeaways: second.value.replace(/\s+/g, ' ').trim().slice(0, 1000),
+    keyTakeaways: trailingTakeaways?.keyTakeaways || '',
     bodyText,
     bodyEntities,
   };
@@ -199,6 +206,27 @@ function splitFirstParagraph(text: string, start: number) {
   return {
     value: text.slice(contentStart, end).trim(),
     nextStart: end + separator[0].length,
+  };
+}
+
+function extractTrailingKeyTakeaways(text: string, bodyStart: number) {
+  let end = text.length;
+  while (end > bodyStart && /\s/.test(text[end - 1])) end -= 1;
+  if (end <= bodyStart) return null;
+
+  const bodySlice = text.slice(bodyStart, end);
+  const separators = [...bodySlice.matchAll(/\n[ \t]*\n/g)];
+  const lastSeparator = separators.at(-1);
+  const paragraphStart = lastSeparator?.index != null
+    ? bodyStart + lastSeparator.index + lastSeparator[0].length
+    : bodyStart;
+  const paragraph = text.slice(paragraphStart, end).trim();
+  const match = paragraph.match(/^Ключові висновки\s*:\s*([\s\S]+)$/i);
+  if (!match) return null;
+
+  return {
+    paragraphStart,
+    keyTakeaways: match[1].replace(/\s+/g, ' ').trim().slice(0, 1000),
   };
 }
 
