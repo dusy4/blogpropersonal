@@ -4,20 +4,20 @@ import { deleteCommands, deleteWebhook, getWebhookInfo, resetMenuButton, setWebh
 export default {
   async fetch(request: Request) {
     if (request.method === 'GET') return html(setupPage());
-    if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+    if (request.method !== 'POST') return new Response('Метод не підтримується', { status: 405 });
 
     const form = await request.formData();
     const secret = String(form.get('secret') || '');
     const action = String(form.get('action') || 'status');
 
     if (!SETUP_SECRET || secret !== SETUP_SECRET) {
-      return html(resultPage('Access denied', 'SETUP_SECRET does not match the Vercel environment variable.'), 403);
+      return html(resultPage('Доступ заборонено', 'SETUP_SECRET не збігається зі значенням у Vercel.'), 403);
     }
 
     try {
       let result: unknown;
       if (action === 'register') {
-        if (!SITE_URL || !WEBHOOK_SECRET) throw new Error('SITE_URL and WEBHOOK_SECRET must be configured first.');
+        if (!SITE_URL || !WEBHOOK_SECRET) throw new Error('Спочатку налаштуйте SITE_URL і WEBHOOK_SECRET.');
         const webhookUrl = `${SITE_URL}/api/telegram`;
         const registered = await setWebhook(webhookUrl, WEBHOOK_SECRET);
         await deleteCommands();
@@ -28,19 +28,19 @@ export default {
       } else {
         result = await getWebhookInfo();
       }
-      return html(resultPage('Done', JSON.stringify(result, null, 2)));
+      return html(resultPage('Готово', JSON.stringify(result, null, 2)));
     } catch (error: any) {
-      return html(resultPage('Setup failed', error?.message || String(error)), 500);
+      return html(resultPage('Помилка налаштування', error?.message || String(error)), 500);
     }
   },
 };
 
 function setupPage() {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>ProPersonal setup</title>${styles()}</head><body><main><h1>ProPersonal Telegram setup</h1><p>This page changes Telegram's stored webhook configuration. It does not expose your Vercel secrets.</p><form method="post"><label>SETUP_SECRET<input name="secret" type="password" required autocomplete="current-password"></label><div class="buttons"><button name="action" value="register">Register / re-register webhook</button><button name="action" value="status">Check webhook status</button><button class="danger" name="action" value="delete">Delete webhook</button></div></form><p class="small">After changing SITE_URL, TELEGRAM_BOT_TOKEN or WEBHOOK_SECRET in Vercel: redeploy first, then come back here and press Register / re-register.</p></main></body></html>`;
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Налаштування ProPersonal</title>${styles()}</head><body><main><h1>Налаштування Telegram для ProPersonal</h1><p>Ця сторінка змінює webhook, який Telegram зберігає для бота. Секрети Vercel тут не відображаються.</p><form method="post"><label>SETUP_SECRET<input name="secret" type="password" required autocomplete="current-password"></label><div class="buttons"><button name="action" value="register">Зареєструвати / перереєструвати webhook</button><button name="action" value="status">Перевірити стан webhook</button><button class="danger" name="action" value="delete">Видалити webhook</button></div></form><p class="small">Після зміни SITE_URL, TELEGRAM_BOT_TOKEN або WEBHOOK_SECRET у Vercel: спочатку зробіть повторний деплой, потім поверніться сюди й натисніть «Зареєструвати / перереєструвати webhook».</p></main></body></html>`;
 }
 
 function resultPage(title: string, output: string) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(title)}</title>${styles()}</head><body><main><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(output)}</pre><p><a href="/api/setup">← Back to setup</a></p></main></body></html>`;
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(title)}</title>${styles()}</head><body><main><h1>${escapeHtml(title)}</h1><pre>${escapeHtml(output)}</pre><p><a href="/api/setup">← Назад до налаштувань</a></p></main></body></html>`;
 }
 
 function styles() {
