@@ -6,15 +6,16 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import { ARTICLES_URL, CASES_URL, SITE_DESCRIPTION, SITE_NAME, UI } from '../config';
+import '../styles/homepage.css';
 
-const articles = (await getCollection('articles')).sort((a,b)=>new Date(b.data.date).getTime()-new Date(a.data.date).getTime());
-const cases = (await getCollection('cases')).sort((a,b)=>new Date(b.data.date||0).getTime()-new Date(a.data.date||0).getTime());
-const slugFor = (entry:any)=>entry.data.slug||entry.id.replace(/^\d{4}-\d{2}-\d{2}-/,'').replace(/\.md$/,'');
-const formatDate = (date:Date|string)=>new Intl.DateTimeFormat('uk-UA',{day:'numeric',month:'long',year:'numeric'}).format(new Date(date));
-const readingTime = (entry:any)=>Math.max(1,Math.ceil((`${entry.body||''} ${entry.data.keyTakeaways||''}`.trim().split(/\s+/).filter(Boolean).length)/180));
+const articles=(await getCollection('articles')).sort((a,b)=>new Date(b.data.date).getTime()-new Date(a.data.date).getTime());
+const cases=(await getCollection('cases')).sort((a,b)=>new Date(b.data.date||0).getTime()-new Date(a.data.date||0).getTime());
+const slugFor=(entry:any)=>entry.data.slug||entry.id.replace(/^\d{4}-\d{2}-\d{2}-/,'').replace(/\.md$/,'');
+const formatDate=(date:Date|string)=>new Intl.DateTimeFormat('uk-UA',{day:'numeric',month:'long',year:'numeric'}).format(new Date(date));
+const readingTime=(entry:any)=>Math.max(1,Math.ceil((`${entry.body||''} ${entry.data.keyTakeaways||''}`.trim().split(/\s+/).filter(Boolean).length)/180));
 const featured=articles[0];
 const rest=articles.slice(1);
-const listVisual=rest.find((entry)=>entry.data.image)?.data.image||featured?.data.image;
+const listVisual=rest.find((entry)=>entry.data.image)?.data.image;
 const heroStyle=featured?.data.image?`background-image:linear-gradient(90deg,rgba(8,52,48,.94),rgba(8,52,48,.76) 50%,rgba(8,52,48,.25)),url('${featured.data.image}')`:undefined;
 const listVisualStyle=listVisual?`background-image:url('${listVisual}')`:undefined;
 const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
@@ -31,8 +32,8 @@ const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
           <h1 id="featured-title">{featured.data.title}</h1>
           <p>{featured.data.keyTakeaways}</p>
           <div class="featured-actions">
-            <a class="featured-button" href={`/articles/${slugFor(featured)}`}>{UI.readArticle}<span>→</span></a>
-            <span class="reading"><span aria-hidden="true">◷</span>{readingTime(featured)} хв читання</span>
+            <a class="featured-button" href={`/articles/${slugFor(featured)}`}>{UI.readArticle}<span aria-hidden="true">→</span></a>
+            <span class="reading"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v5l3 1.8"></path></svg>{readingTime(featured)} хв читання</span>
           </div>
         </div>
       </section>
@@ -40,46 +41,49 @@ const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
 
     <section id="articles" class="content-section" aria-labelledby="articles-title">
       <div class="section-heading">
-        <div class="section-title"><h2 id="articles-title">{UI.articlesTitle}</h2><i></i><p>{UI.articlesDescription}</p></div>
+        <div class="section-title">
+          <div class="section-title-line"><h2 id="articles-title">{UI.articlesTitle}</h2><i aria-hidden="true"></i></div>
+          <p>{UI.articlesDescription}</p>
+        </div>
         <a class="section-cta" href={ARTICLES_URL}>{UI.allArticles}<span aria-hidden="true">→</span></a>
       </div>
-      <div class="articles-layout">
-        <div class="articles-visual" style={listVisualStyle} aria-hidden="true"><span>{UI.articlesVisualTag}</span></div>
+      <div class:list={['articles-layout',!listVisual&&'no-visual']}>
+        {listVisual&&rest.length>0&&<div class="articles-visual" style={listVisualStyle} aria-hidden="true"><span>{UI.articlesVisualTag}</span></div>}
         <div class="article-list">
-          {rest.length ? rest.map((post)=>(
+          {rest.length?rest.map((post)=>(
             <article class="article-row"><a href={`/articles/${slugFor(post)}`}>
-              <div><time datetime={new Date(post.data.date).toISOString()}>{formatDate(post.data.date)}</time><h3>{post.data.title}</h3><p>{post.data.keyTakeaways}</p><small>◷ {readingTime(post)} хв читання</small></div><b aria-hidden="true">→</b>
+              <div><time datetime={new Date(post.data.date).toISOString()}>{formatDate(post.data.date)}</time><h3>{post.data.title}</h3><p>{post.data.keyTakeaways}</p><small><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v5l3 1.8"></path></svg>{readingTime(post)} хв читання</small></div>
+              <b aria-hidden="true">→</b>
             </a></article>
-          )) : <div class="empty-list">{UI.emptyArticles}</div>}
+          )):<div class="empty-list">{UI.emptyArticles}</div>}
         </div>
       </div>
     </section>
 
+    <div class="content-divider" aria-hidden="true"></div>
+
     <section id="cases" class="content-section cases-section" aria-labelledby="cases-title">
       <div class="section-heading">
-        <div class="section-title"><h2 id="cases-title">{UI.casesTitle}</h2><i></i><p>{UI.casesDescription}</p></div>
+        <div class="section-title">
+          <div class="section-title-line"><h2 id="cases-title">{UI.casesTitle}</h2><i aria-hidden="true"></i></div>
+          <p>{UI.casesDescription}</p>
+        </div>
         <a class="section-cta" href={CASES_URL} target={casesArchiveExternal?'_blank':undefined} rel={casesArchiveExternal?'noopener':undefined}>{UI.allCases}<span aria-hidden="true">→</span></a>
       </div>
-      {cases.length ? (
+      {cases.length?(
         <div class="cases-grid">
-          {cases.map((entry,index)=>(
+          {cases.map((entry)=>(
             <article id={`case-${slugFor(entry)}`} class:list={['case-card',entry.data.url&&'linked']}>
-              {entry.data.url && <a class="case-overlay" href={entry.data.url} target="_blank" rel="noopener" aria-label={`Відкрити кейс: ${entry.data.title}`}></a>}
-              {entry.data.url && <span class="external-arrow" aria-hidden="true">↗</span>}
-              <div class="case-top"><span class="case-icon">{index%3===0?'◎':index%3===1?'▥':'ϟ'}</span>{entry.data.client&&<span class="client">{entry.data.client}</span>}</div>
-              <h3>{entry.data.title}</h3><p>{entry.data.description}</p>{entry.data.result&&<strong>{entry.data.result}</strong>}
+              {entry.data.url&&<a class="case-overlay" href={entry.data.url} target="_blank" rel="noopener" aria-label={`Відкрити кейс: ${entry.data.title}`}></a>}
+              <div class="case-meta">{entry.data.client?<span class="client">{entry.data.client}</span>:<span></span>}{entry.data.url&&<span class="external-arrow" aria-hidden="true">↗</span>}</div>
+              <h3>{entry.data.title}</h3>
+              <p>{entry.data.description}</p>
+              {entry.data.result&&<strong>{entry.data.result}</strong>}
             </article>
           ))}
         </div>
-      ) : <div class="empty-list">{UI.emptyCases}</div>}
+      ):<div class="empty-list">{UI.emptyCases}</div>}
     </section>
   </div>
   <Footer slot="footer" />
 </Layout>
-
-<style>
-.blog-shell{width:min(1120px,calc(100% - 40px));margin:auto;padding:10px 0 34px}.featured-hero{position:relative;overflow:hidden;min-height:405px;border-radius:15px;background:radial-gradient(65% 55% at 86% 0%,#fff5c2 0%,rgba(255,245,194,.18) 26%,transparent 47%),radial-gradient(70% 35% at 91% 72%,rgba(222,237,193,.7) 0%,transparent 62%),linear-gradient(120deg,#073d38,#0d4b43 42%,#375e55);background-size:cover;background-position:center}.featured-hero:after{content:'';position:absolute;width:80%;height:72%;right:-8%;top:-20%;border-radius:50%;border:2px solid rgba(255,245,205,.34);transform:rotate(-18deg)}.featured-content{position:relative;z-index:2;width:min(560px,62%);padding:34px 31px;color:#fff}.featured-kicker{display:inline-flex;padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.15);font-size:11px;font-weight:700;text-transform:uppercase}.featured-content time{display:block;margin-top:24px;color:rgba(255,255,255,.82);font-size:14px}.featured-content h1{margin:14px 0 11px;color:#fff;font-size:clamp(2rem,4.2vw,3.1rem);line-height:1.06}.featured-content>p{margin:0;color:rgba(255,255,255,.82);font-size:15px;line-height:1.58}.featured-actions{display:flex;align-items:center;gap:24px;margin-top:25px}.featured-button{display:inline-flex;align-items:center;gap:12px;padding:13px 20px;border-radius:8px;background:#fff;color:#18211f;font-size:14px;font-weight:700}.reading{color:rgba(255,255,255,.78);font-size:12px}.content-section{padding:35px 0 6px}.cases-section{margin-top:28px;padding-top:30px;border-top:1px solid #e5e7e0}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px}.section-title{display:flex;align-items:center;gap:13px;min-width:0}.section-title h2{margin:0;color:#0c3534;font-size:30px}.section-title i{width:7px;height:7px;border-radius:50%;background:#0f4c4d;flex:none}.section-title p{margin:0;color:#888f8b;font-size:13px}.section-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:7px 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:#0f5b50!important;font-size:14px;font-weight:650;line-height:1;white-space:nowrap;transition:color .18s ease,background .18s ease,border-color .18s ease}.section-cta span{font-size:17px;line-height:1;transition:transform .18s ease}.section-cta:hover{background:#edf6f2;border-color:#cfe3da;color:#0a463f!important}.section-cta:hover span{transform:translateX(3px)}.section-cta:focus-visible{outline:3px solid rgba(15,91,80,.28);outline-offset:2px;background:#edf6f2;border-color:#b8d8cb}.articles-layout{display:grid;grid-template-columns:302px minmax(0,1fr);gap:36px}.articles-visual{position:relative;min-height:179px;overflow:hidden;border-radius:10px;background:radial-gradient(100% 90% at 85% 50%,rgba(71,128,103,.48),transparent 68%),linear-gradient(125deg,#e5e7da,#f3f2e8 48%,#c9d2bf);background-size:cover;background-position:center}.articles-visual span{position:absolute;left:16px;bottom:15px;padding:5px 10px;border-radius:999px;background:#285d57;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase}.article-row{border-bottom:1px solid #e2e5df}.article-row>a{display:grid;grid-template-columns:1fr 34px;gap:18px;align-items:center;padding:15px 4px 16px 0;color:inherit}.article-row time,.article-row small{color:#717b78;font-size:12px}.article-row h3{margin:6px 0 5px;color:#161b1a;font-size:18px}.article-row p{display:-webkit-box;overflow:hidden;margin:0;color:#777f7c;font-size:13px;line-height:1.45;-webkit-line-clamp:2;-webkit-box-orient:vertical}.article-row small{display:block;margin-top:12px}.article-row b{font-size:23px}.cases-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.case-card{position:relative;min-height:214px;padding:18px;border:1px solid #e0e2dc;border-radius:11px;background:rgba(255,255,255,.72)}.case-card.linked{transition:.18s ease}.case-card.linked:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(25,45,38,.08)}.case-overlay{position:absolute;inset:0;z-index:3;border-radius:11px}.external-arrow{position:absolute;right:16px;top:15px;color:#0f4c4d;font-size:18px}.case-top{display:flex;align-items:center;gap:13px}.case-icon{display:grid;place-items:center;width:43px;height:43px;border-radius:9px;background:#0c4c46;color:#fff;font-size:22px}.client{color:#737d79;font-size:10px;font-weight:700;text-transform:uppercase}.case-card h3{margin:8px 0 8px 56px;color:#171d1c;font-size:16px}.case-card>p{margin:0 0 16px 56px;color:#6e7774;font-size:12px;line-height:1.48}.case-card strong{display:block;margin-top:18px;padding-left:13px;border-left:2px solid #f4a15c;color:#626b68;font-size:12px;font-weight:500}.empty-list{min-height:120px;display:grid;place-items:center;border:1px solid #e0e3dc;border-radius:10px;color:#7d8582}.empty-hero{padding:70px 30px;border-radius:15px;background:#0d4b43;color:#fff}.empty-hero h1{color:#fff}
-@media(max-width:900px){.blog-shell{width:min(100% - 32px,1120px)}.featured-content{width:78%}.articles-layout{grid-template-columns:245px 1fr;gap:24px}.cases-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:700px){.blog-shell{width:min(100% - 24px,1120px)}.featured-hero{min-height:480px}.featured-content{width:100%;padding:27px 22px}.featured-content h1{font-size:clamp(2rem,10vw,2.65rem)}.featured-actions{align-items:flex-start;flex-direction:column;gap:14px}.section-heading{align-items:flex-start}.section-title{display:grid;grid-template-columns:auto auto;gap:8px 10px}.section-title p{grid-column:1/-1}.section-cta{min-height:40px;padding:7px 9px;font-size:14px}.articles-layout{grid-template-columns:1fr}.articles-visual{min-height:180px}.cases-grid{grid-template-columns:1fr}.case-card{min-height:0}}
-@media(max-width:420px){.featured-button{width:100%;justify-content:center}.section-heading{display:grid;grid-template-columns:1fr}.section-cta{justify-self:start;width:auto}}
-</style>
