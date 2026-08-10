@@ -52,8 +52,7 @@ export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'ProPersonal';
 export const ARTICLE_PATH = process.env.ARTICLE_PATH || 'astro/src/content/articles';
 export const CASE_PATH = process.env.CASE_PATH || 'astro/src/content/cases';
 
-// Увесь видимий текст Telegram CMS та поля форми кейсу зібрані тут.
-// Посилання конкретного кейсу є частиною контенту, а не Vercel-конфігурацією.
+// Увесь видимий текст Telegram CMS та поля кнопкових форм зібрані тут.
 export const CMS = {
   articleButton: '📝 Нова стаття',
   caseButton: '💼 Новий кейс',
@@ -61,7 +60,14 @@ export const CMS = {
   idButton: '🆔 Мій ID',
   helpButton: '❓ Допомога',
 
-  articlePrompt: '📝 НОВА СТАТТЯ\n\nВідповідайте на це повідомлення:\n\nЗаголовок\n\nТекст статті\n\nЗа бажанням першим абзацом додайте “Ключові висновки: …”. Якщо їх немає, Claude згенерує їх автоматично.',
+  articleDraftTitle: '📝 Чернетка статті',
+  articleEditPrefix: '✏️ Редагування поля статті:',
+  articleDraftMarker: '--- ПОТОЧНА ЧЕРНЕТКА СТАТТІ ---',
+  articleFields: {
+    title: { label: 'Заголовок', button: '✏️ Заголовок', maxLength: 160 },
+    keyTakeaways: { label: 'Ключові висновки', button: '🧠 Ключові висновки', maxLength: 1000 },
+    body: { label: 'Текст статті', button: '📝 Текст', maxLength: 4096 },
+  },
 
   caseDraftTitle: '🧩 Чернетка кейсу',
   caseEditPrefix: '✏️ Редагування поля кейсу:',
@@ -80,8 +86,6 @@ export const CMS = {
   publishArticle: '✅ Опублікувати статтю',
   publishCase: '✅ Опублікувати кейс',
   cancel: '❌ Скасувати',
-  editTakeaways: '✏️ Ключові висновки',
-  regenerateTakeaways: '♻️ Згенерувати знову',
 } as const;
 
 export function isAllowed(id: number): boolean {
