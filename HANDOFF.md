@@ -1,48 +1,44 @@
 # Client Handoff — operational runbook
 
-Цей файл — покрокова інструкція передачі готового блогу в інфраструктуру клієнта. Після handoff production не повинен залежати від GitHub/Vercel/Telegram/Anthropic credentials розробника.
+Цей файл описує повну передачу ProPersonal Blog у client-owned GitHub, Vercel, Telegram та Anthropic infrastructure.
 
-VPS, daemon, Redis або database не потрібні.
+Production не потребує VPS, daemon, Redis або database.
 
 ---
 
-# A. Що передається
+# 1. Що передається
 
 Клієнт повинен контролювати:
 
 - GitHub repository;
 - Vercel project;
 - Telegram bot;
-- public Telegram channel для CTA;
-- optional private Telegram source channel(s) для автопублікації;
+- public Telegram channel URL для CTA сайту;
+- optional private/public Telegram source channel(s) для автоматичної публікації;
 - Anthropic API key;
 - GitHub publishing token;
-- domain/DNS, якщо є custom domain.
+- custom domain / DNS, якщо використовується.
 
 Основні routes:
 
 ```text
-/                         blog homepage: Articles + Cases
-/articles                 article archive
+/                         homepage: featured article + Articles + Cases
+/articles                 archive
 /articles/<slug>          article reader
-/cases                    case archive
+/cases                    cases archive
 /llms.txt                 machine-facing summary
-/llms-full.txt            machine-facing full corpus
+/llms-full.txt            machine-facing full content
 /api/telegram             Telegram webhook
 /api/setup                protected webhook setup
 ```
 
-Cases на homepage мають stable anchors `/#case-<slug>`.
-
 ---
 
-# B. GitHub
+# 2. GitHub
 
-## B1. Transfer repository
+Transfer repository або перенесіть його в client-owned account/org.
 
-Використайте GitHub **Transfer ownership** або перенесіть repository/history у client-owned repo.
-
-Після transfer:
+Vercel env:
 
 ```text
 GITHUB_OWNER=<client owner>
@@ -50,23 +46,14 @@ GITHUB_REPO=<repo name>
 GITHUB_BRANCH=main
 ```
 
-## B2. GitHub token для Telegram CMS
-
-Створіть client-owned fine-grained PAT.
-
-Repository access:
+Створіть client-owned fine-grained PAT лише для production repo:
 
 ```text
-Only selected repositories -> production blog repo
+Repository permissions
+Contents: Read and write
 ```
 
-Permission:
-
-```text
-Contents -> Read and write
-```
-
-Vercel secret:
+Зберегти у Vercel:
 
 ```text
 GITHUB_TOKEN=<token>
@@ -74,94 +61,134 @@ GITHUB_TOKEN=<token>
 
 ---
 
-# C. Telegram bot
+# 3. Telegram bot
 
-Через BotFather створіть або передайте production bot.
+Створіть або передайте production bot через BotFather.
+
+Vercel secret:
 
 ```text
-TELEGRAM_BOT_TOKEN=<token>
+TELEGRAM_BOT_TOKEN=<bot token>
 ```
 
-Token зберігається тільки у Vercel Environment Variables.
-
-CMS працює кнопками:
+CMS працює кнопками, а не typed slash commands:
 
 ```text
 📝 Нова стаття     💼 Новий кейс
 ⚙️ Стан            🆔 Мій ID      ❓ Допомога
 ```
 
-Slash commands не використовуються як CMS interface. Telegram native Start технічно надсилає `/start`, але користувач нічого не вводить вручну.
+Telegram native Start технічно надсилає `/start`; користувач вручну команд не вводить.
 
 ---
 
-# D. Telegram access model
+# 4. Telegram access model
 
-Люди і source channels мають **різні allowlists**.
+Є дві основні access variables.
 
-## D1. Люди, які можуть користуватися ботом
+## 4.1 Users, які можуть користуватися ботом
 
-```text
-ADMIN_ID=<telegram user id>
-TELEGRAM_ALLOWED_USER_IDS=<comma-separated user ids>
-```
-
-`ADMIN_ID` завжди дозволений і бачить розширений `⚙️ Стан`.
-
-Дозволити бот усім користувачам:
+Дозволити всім:
 
 ```text
 TELEGRAM_ALLOWED_USER_IDS=0
 ```
 
-Обмежити конкретними людьми:
+Дозволити лише конкретних users:
 
 ```text
 TELEGRAM_ALLOWED_USER_IDS=111111111,222222222
 ```
 
-Порожнє значення означає: користуватися CMS може тільки `ADMIN_ID`.
+Порожній список означає, що новою allowlist-моделлю ніхто не дозволений.
 
-Старий `ALLOWED_IDS` підтримується лише як backward-compatible fallback; у новій конфігурації використовувати `TELEGRAM_ALLOWED_USER_IDS`.
+Legacy `ALLOWED_IDS` підтримується тільки як backward-compatible fallback, якщо `TELEGRAM_ALLOWED_USER_IDS` ще не заданий.
 
-## D2. Приватні/публічні канали-джерела
+## 4.2 Channels, з яких дозволена автоматична публікація
+
+Дозволити будь-який канал, де bot отримує `channel_post`:
+
+```text
+TELEGRAM_SOURCE_CHANNEL_IDS=0
+```
+
+Дозволити лише конкретні source channels:
 
 ```text
 TELEGRAM_SOURCE_CHANNEL_IDS=-1001234567890,-1009876543210
 ```
 
-Тільки явно вказані channel IDs можуть автоматично створювати статті через `channel_post`.
+Порожній список означає: channel auto-publishing disabled.
 
-`0` тут **не означає allow all**. Якщо список порожній, автопублікація з каналів вимкнена.
+`0` тут так само є wildcard, як і для users.
 
-Це окремо від:
+## 4.3 ADMIN_ID
+
+```text
+ADMIN_ID=<optional telegram user id>
+```
+
+`ADMIN_ID` не є основною access variable. Він залишений для backward compatibility та diagnostics-owner поведінки `⚙️ Стан`.
+
+Для нового setup publication access налаштовується через:
+
+```text
+TELEGRAM_ALLOWED_USER_IDS
+TELEGRAM_SOURCE_CHANNEL_IDS
+```
+
+Якщо не потрібен окремий diagnostics owner, `ADMIN_ID` можна залишити порожнім.
+
+---
+
+# 5. Public Telegram URL vs source channels
+
+Це різні речі.
 
 ```text
 TELEGRAM_CHANNEL_URL=https://t.me/public_channel
 ```
 
-`TELEGRAM_CHANNEL_URL` — public CTA/header/footer URL на сайті. Він не дає права публікувати контент.
+`TELEGRAM_CHANNEL_URL` використовується лише на сайті: header/footer/article CTA.
 
-## D3. Як підключити приватний source channel
+Він не дає права публікувати контент.
 
-1. Додайте production bot у приватний канал. Telegram доставляє боту channel posts для каналів, де бот є учасником.
-2. Переконайтесь, що webhook уже зареєстрований і включає `channel_post`.
-3. Якщо numeric ID каналу ще невідомий, залиште `TELEGRAM_SOURCE_CHANNEL_IDS` порожнім і зробіть один тестовий пост.
-4. Відкрийте Vercel -> Project -> Logs / Runtime Logs для `/api/telegram`.
-5. Знайдіть рядок:
+Source-channel permission задається тільки через:
+
+```text
+TELEGRAM_SOURCE_CHANNEL_IDS
+```
+
+---
+
+# 6. Як підключити private source channel
+
+1. Додайте production bot у приватний Telegram channel.
+2. Webhook має бути зареєстрований з `channel_post` у `allowed_updates`.
+3. Якщо хочете дозволити будь-який channel, встановіть:
+
+```text
+TELEGRAM_SOURCE_CHANNEL_IDS=0
+```
+
+4. Якщо потрібен allowlist конкретних channels, але numeric ID невідомий:
+   - тимчасово залиште `TELEGRAM_SOURCE_CHANNEL_IDS` порожнім;
+   - зробіть один test post у channel;
+   - відкрийте Vercel Runtime Logs для `/api/telegram`;
+   - знайдіть:
 
 ```text
 Ignored channel_post from unconfigured channel -1001234567890
 ```
 
-6. Додайте отриманий ID у Vercel:
+5. Додайте цей ID:
 
 ```text
 TELEGRAM_SOURCE_CHANNEL_IDS=-1001234567890
 ```
 
-7. Redeploy.
-8. Зробіть готовий тестовий пост у каналі у форматі:
+6. Redeploy.
+7. Надішліть готову статтю:
 
 ```text
 Заголовок статті
@@ -169,31 +196,42 @@ TELEGRAM_SOURCE_CHANNEL_IDS=-1001234567890
 Текст статті...
 ```
 
-9. Очікування: `.md` з'являється в GitHub, Git commit запускає Vercel deploy, стаття з'являється на сайті.
+Expected pipeline:
 
-Код не намагається писати confirmation назад у source channel; тому йому не потрібне право публікувати повідомлення в канал для цього workflow.
+```text
+Telegram channel_post
+-> Vercel /api/telegram
+-> optional Claude Key Takeaways
+-> GitHub Markdown commit
+-> Vercel auto-deploy
+-> article on site
+```
+
+Bot не мусить писати confirmation назад у source channel.
 
 ---
 
-# E. Anthropic
+# 7. Anthropic
 
-У client Anthropic Console:
+Vercel:
 
 ```text
 ANTHROPIC_API_KEY=<client key>
 ANTHROPIC_MODEL=claude-sonnet-5
 ```
 
-Використовується для:
+Claude використовується для:
 
-- automatic Key Takeaways у Telegram;
-- build-time summarization `/llms.txt`.
+- Key Takeaways, якщо їх не задав автор;
+- build-time summaries для `/llms.txt`.
+
+`/llms-full.txt` збирається без Claude.
 
 ---
 
-# F. Generate secrets
+# 8. Webhook secrets
 
-Створіть два незалежні random secrets, наприклад:
+Створіть два різні random secrets:
 
 ```bash
 openssl rand -hex 32
@@ -203,52 +241,45 @@ openssl rand -hex 32
 Vercel:
 
 ```text
-WEBHOOK_SECRET=<first value>
-SETUP_SECRET=<second value>
+WEBHOOK_SECRET=<secret 1>
+SETUP_SECRET=<secret 2>
 ```
 
-`WEBHOOK_SECRET` передається Telegram у `setWebhook.secret_token`; Telegram повертає його в `X-Telegram-Bot-Api-Secret-Token`.
+`WEBHOOK_SECRET` передається Telegram через `setWebhook.secret_token`. Telegram потім надсилає його в header:
+
+```text
+X-Telegram-Bot-Api-Secret-Token
+```
 
 `SETUP_SECRET` захищає `/api/setup`.
 
 ---
 
-# G. Vercel
+# 9. Vercel production environment variables
 
-## G1. Import project
-
-1. Add New -> Project.
-2. Import client GitHub repository.
-3. Production branch = `main`.
-4. `vercel.json` залишається source of truth для install/build/output settings.
-
-## G2. Production Environment Variables
+Recommended baseline:
 
 ```text
-TELEGRAM_BOT_TOKEN=<client bot token>
+TELEGRAM_BOT_TOKEN=<bot token>
 TELEGRAM_ALLOWED_USER_IDS=0
-TELEGRAM_SOURCE_CHANNEL_IDS=
+TELEGRAM_SOURCE_CHANNEL_IDS=0
 ADMIN_ID=
 
-ANTHROPIC_API_KEY=<client Anthropic key>
+ANTHROPIC_API_KEY=<client key>
 ANTHROPIC_MODEL=claude-sonnet-5
 
-GITHUB_TOKEN=<client fine-grained PAT>
-GITHUB_OWNER=<client GitHub owner>
-GITHUB_REPO=<repo name>
+GITHUB_TOKEN=<fine-grained PAT>
+GITHUB_OWNER=<owner>
+GITHUB_REPO=blogpropersonal
 GITHUB_BRANCH=main
 
-WEBHOOK_SECRET=<generated secret>
-SETUP_SECRET=<generated setup secret>
+WEBHOOK_SECRET=<random secret>
+SETUP_SECRET=<random setup secret>
 
-SITE_URL=<final or temporary production URL>
-TELEGRAM_CHANNEL_URL=<public Telegram CTA channel URL>
+SITE_URL=https://blog.client.com
+TELEGRAM_CHANNEL_URL=https://t.me/public_channel
 DEFAULT_AUTHOR=Pro Personal Agency
-```
 
-Optional frontend config:
-
-```text
 SITE_NAME=ProPersonal
 SITE_MARK=PP
 BLOG_SUBTITLE=Блог про AI-інтеграції та автоматизацію
@@ -263,216 +294,172 @@ Do not set in production:
 SKIP_LLM_GENERATION=1
 ```
 
-Redeploy after changing environment variables.
+Redeploy after env changes.
 
 ---
 
-# H. Domain
+# 10. First webhook registration
 
-If using custom domain:
+Після deploy і налаштованого `SITE_URL`:
 
-1. Vercel -> Project -> Settings -> Domains.
-2. Add final domain/subdomain.
-3. Apply DNS records requested by Vercel.
-4. Wait until domain is valid.
-5. Set:
-
-```text
-SITE_URL=https://blog.client.com
-```
-
-6. Redeploy.
-7. **Re-register Telegram webhook**, because webhook URL depends on `SITE_URL`.
-
-`SITE_URL` controls article links, bot publish links, webhook target, `llms.txt`, sitemap and robots URLs.
-
----
-
-# I. Webhook setup — first registration
-
-After production deploy and final/current `SITE_URL` are ready:
-
-1. Open:
+1. Відкрийте:
 
 ```text
 https://CURRENT_DOMAIN/api/setup
 ```
 
-2. Enter `SETUP_SECRET`.
-3. Click **«Зареєструвати / перереєструвати webhook»**.
-4. Expected Telegram target:
+2. Введіть `SETUP_SECRET`.
+3. Натисніть **«Зареєструвати / перереєструвати webhook»**.
+4. Expected webhook URL:
 
 ```text
 https://CURRENT_DOMAIN/api/telegram
 ```
 
-Registration performs:
+Registration робить:
 
-1. Telegram `setWebhook`;
-2. `secret_token = WEBHOOK_SECRET`;
-3. `allowed_updates = message, callback_query, channel_post`;
-4. removes old registered slash commands;
-5. resets Telegram menu button;
-6. reads webhook status back.
+- Telegram `setWebhook`;
+- передає `WEBHOOK_SECRET` як `secret_token`;
+- встановлює `allowed_updates = message, callback_query, channel_post`;
+- видаляє старі registered slash commands;
+- reset menu button;
+- читає `getWebhookInfo` назад.
 
-Then use **«Перевірити стан»** in `/api/setup` and confirm:
+Після цього натисніть **«Перевірити стан»** і перевірте:
 
-- webhook URL is the current production domain;
-- there is no `last_error_message`;
-- allowed updates include `channel_post`.
+- webhook URL правильний;
+- немає `last_error_message`;
+- `channel_post` є в allowed updates.
 
-Telegram supports only one active outgoing webhook per bot. Registering a new URL replaces the previous webhook for that bot.
+Один Telegram bot має один active outgoing webhook URL. Новий `setWebhook` для цього bot замінює старий URL.
 
 ---
 
-# J. When webhook must be re-registered
+# 11. Коли треба re-register webhook
 
-## J1. Domain changed, same bot
-
-Change:
+## Domain changed, bot same
 
 ```text
 SITE_URL=https://NEW_DOMAIN
 ```
 
-Then:
+Потім:
 
 1. Redeploy.
 2. Open `https://NEW_DOMAIN/api/setup`.
 3. Register / re-register webhook.
 4. Check status.
-5. Test private bot message and, if configured, source-channel post.
+5. Test bot and source-channel publication.
 
-The old domain no longer needs to receive Telegram updates after successful re-registration.
-
-## J2. New Telegram bot/token, same domain
-
-Change:
+## Bot/token changed, domain same
 
 ```text
-TELEGRAM_BOT_TOKEN=<new bot token>
+TELEGRAM_BOT_TOKEN=<new token>
 ```
 
-Then:
+Потім:
 
 1. Redeploy.
-2. Open `/api/setup` on current domain.
-3. Register webhook. This registers the webhook on the **new bot**.
-4. Open the new bot and press Telegram Start.
-5. Re-check `ADMIN_ID` / `TELEGRAM_ALLOWED_USER_IDS`.
-6. Add the new bot to every source channel.
-7. Re-check `TELEGRAM_SOURCE_CHANNEL_IDS` and test channel publication.
+2. Open current `/api/setup`.
+3. Register webhook — це реєструє webhook уже для нового bot.
+4. Start new bot.
+5. Add new bot to source channels.
+6. Test bot CMS and channel ingestion.
 
-The old bot keeps whatever webhook it had until you explicitly delete/change it using the old token. During handoff, delete the old webhook or revoke the old bot token if the bot is being retired.
+Old bot retains its own old webhook until it is explicitly deleted/changed using the old token or the bot/token is retired.
 
-## J3. Domain and bot both changed
+## Domain and bot both changed
 
 1. Update `SITE_URL`.
 2. Update `TELEGRAM_BOT_TOKEN`.
 3. Redeploy.
 4. Open `https://NEW_DOMAIN/api/setup`.
 5. Register webhook.
-6. Configure user/channel allowlists.
-7. Add new bot to source channels.
-8. Test bot publication and channel publication.
+6. Test bot and channel publication.
 
-## J4. WEBHOOK_SECRET changed
+## WEBHOOK_SECRET changed
 
-Change `WEBHOOK_SECRET`, redeploy, then **always re-register webhook**.
+1. Update secret.
+2. Redeploy.
+3. **Always re-register webhook**.
 
-If not re-registered, Telegram continues sending the old secret and `/api/telegram` returns 401.
+Without step 3 Telegram keeps sending the old secret and `/api/telegram` returns 401.
 
-## J5. SETUP_SECRET changed
+## SETUP_SECRET changed
 
-Change `SETUP_SECRET`, redeploy. Webhook registration is not required.
+Redeploy only. No webhook registration needed.
 
-## J6. User/channel allowlists changed
+## TELEGRAM_ALLOWED_USER_IDS changed
 
-Change any of:
+Redeploy only.
+
+## TELEGRAM_SOURCE_CHANNEL_IDS changed
+
+Redeploy only.
+
+## TELEGRAM_CHANNEL_URL changed
+
+Redeploy only. This only changes public website links.
+
+## GitHub token/repository changed
+
+Update:
 
 ```text
-ADMIN_ID
-TELEGRAM_ALLOWED_USER_IDS
-TELEGRAM_SOURCE_CHANNEL_IDS
+GITHUB_TOKEN
+GITHUB_OWNER
+GITHUB_REPO
+GITHUB_BRANCH
 ```
 
-Redeploy only. Webhook re-registration is not required.
+Reconnect Vercel Git integration to the same repo/branch if necessary, then redeploy and test publication. No Telegram webhook change is required unless bot/domain/webhook secret also changed.
 
-## J7. Public CTA channel URL changed
+## Anthropic key/model changed
 
-Change:
-
-```text
-TELEGRAM_CHANNEL_URL
-```
-
-Redeploy only. This does not affect webhook/source-channel permissions.
+Update env and redeploy. No webhook re-registration required.
 
 ---
 
-# K. Configure admin
+# 12. Acceptance tests
 
-1. Open production bot.
-2. Press Telegram native Start.
-3. Tap `🆔 Мій ID`.
-4. Copy returned ID.
-5. Set `ADMIN_ID=<id>` in Vercel.
-6. Redeploy.
+## Bot article
 
-No webhook re-registration required.
-
----
-
-# L. End-to-end acceptance tests
-
-## L1. Bot article
-
-Telegram -> `📝 Нова стаття`.
-
-Send:
-
-```text
-Тестова стаття
-
-## Тестовий заголовок
-
-Це тест production publishing pipeline.
-```
+1. Open bot.
+2. Press `📝 Нова стаття`.
+3. Send title + blank line + article.
+4. Publish preview.
 
 Expected:
 
-1. Claude generates Key Takeaways if not supplied;
-2. preview appears;
-3. publish button works;
-4. GitHub gets `.md` in `astro/src/content/articles/`;
-5. Git commit triggers Vercel deployment;
-6. homepage/article page update;
-7. JSON-LD, share buttons, Telegram CTA work;
-8. `/llms.txt` and `/llms-full.txt` contain the article.
+- Markdown in `astro/src/content/articles/`;
+- GitHub commit;
+- Vercel deployment;
+- article on homepage/archive;
+- Key Takeaways;
+- share buttons;
+- Telegram CTA;
+- `TechArticle` JSON-LD;
+- article present in `/llms.txt` and `/llms-full.txt`.
 
-## L2. Source-channel article
+## Source-channel article
 
-1. Bot is a member of configured source channel.
-2. Channel ID is in `TELEGRAM_SOURCE_CHANNEL_IDS`.
-3. Publish:
+1. Bot is member of source channel.
+2. `TELEGRAM_SOURCE_CHANNEL_IDS=0` or channel ID is allowlisted.
+3. Post title + blank line + article.
 
-```text
-Тест із приватного каналу
+Expected: GitHub Markdown commit -> Vercel deploy -> article appears.
 
-Текст готової статті...
-```
+## Case
 
-Expected: Markdown commit -> Vercel deployment -> article appears. No button confirmation is expected inside the channel.
+1. `💼 Новий кейс`.
+2. Fill fields via inline buttons.
+3. Publish.
 
-## L3. Case
-
-Telegram -> `💼 Новий кейс`, fill fields with buttons, publish.
-
-Expected: case Markdown commit -> deploy -> card appears on homepage and `/cases`; external URL opens if supplied.
+Expected: case Markdown -> deploy -> homepage Cases section + `/cases` archive. If `url` exists, card opens external source.
 
 ---
 
-# M. AI/indexing verification
+# 13. AIO/indexing verification
 
 Check:
 
@@ -483,64 +470,80 @@ https://FINAL_DOMAIN/sitemap.xml
 https://FINAL_DOMAIN/robots.txt
 ```
 
-Human frontend must not promote `llms.txt` links.
+Human frontend must not show/promote `llms.txt` links.
 
-Article View Source must contain `application/ld+json` and `TechArticle`.
+Article View Source must contain:
+
+```text
+application/ld+json
+TechArticle
+```
 
 ---
 
-# N. Troubleshooting
+# 14. Troubleshooting
 
 ## Bot does not answer
 
-1. `/api/setup` -> Check webhook status.
-2. Confirm webhook URL matches current `SITE_URL`.
-3. Check Telegram `last_error_message`.
-4. Ensure Vercel Deployment Protection does not block Telegram.
-5. Check `TELEGRAM_ALLOWED_USER_IDS`; `0` allows everyone.
+- check `/api/setup` -> webhook status;
+- verify `SITE_URL`;
+- check Telegram `last_error_message`;
+- ensure Deployment Protection does not block Telegram;
+- check `TELEGRAM_ALLOWED_USER_IDS`; `0` allows everyone.
 
-## Private source channel does not publish
+## Source channel does not publish
 
-1. Confirm bot is a member of the channel.
-2. Confirm webhook allowed updates include `channel_post`.
-3. Post a test message and inspect Vercel Runtime Logs.
-4. If log says `Ignored channel_post from unconfigured channel -100...`, copy that ID into `TELEGRAM_SOURCE_CHANNEL_IDS`.
-5. Redeploy and retry.
+- confirm bot is member of channel;
+- confirm webhook allowed updates include `channel_post`;
+- check `TELEGRAM_SOURCE_CHANNEL_IDS`;
+- `0` allows any channel;
+- for allowlist mode inspect Runtime Logs to discover `-100...` ID;
+- redeploy after env change.
 
-## Webhook returns 401
+## Webhook 401
 
-`WEBHOOK_SECRET` in Vercel and Telegram's stored webhook secret differ. Redeploy and re-register webhook.
+`WEBHOOK_SECRET` in Vercel differs from Telegram stored secret. Redeploy and re-register webhook.
 
 ## GitHub 401/403
 
-Check PAT, selected repo, `Contents: Read and write`, owner/repo/branch.
+Verify PAT, selected repository and `Contents: Read and write`.
 
-## Markdown exists but site does not update
+## Markdown committed but site not updated
 
-Check Vercel Git integration watches the exact repo/branch the bot writes to.
+Verify Vercel Git integration watches the exact repo/branch where Telegram commits.
 
 ## Claude fails
 
-Check `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL`. Build-time `llms.txt` has deterministic fallback; Telegram auto-Key-Takeaways need Anthropic unless provided manually.
+Verify:
+
+```text
+ANTHROPIC_API_KEY
+ANTHROPIC_MODEL
+```
+
+Build-time `llms.txt` has deterministic fallback, so Anthropic outage should not break static deployment.
 
 ---
 
-# O. Final ownership checklist
+# 15. Final ownership checklist
 
-- [ ] GitHub repo is client-owned;
-- [ ] Vercel project is client-owned;
-- [ ] final domain is client-controlled;
-- [ ] Vercel watches correct repo/branch;
-- [ ] `GITHUB_TOKEN` belongs to client;
-- [ ] `ANTHROPIC_API_KEY` belongs to client;
-- [ ] Telegram bot/token belongs to client;
-- [ ] `TELEGRAM_ALLOWED_USER_IDS` policy is intentional;
-- [ ] private source channel IDs are in `TELEGRAM_SOURCE_CHANNEL_IDS` if used;
-- [ ] public CTA URL is in `TELEGRAM_CHANNEL_URL`;
-- [ ] webhook status shows current production domain and correct bot;
-- [ ] source-channel test passed if required;
-- [ ] bot article test passed;
-- [ ] case publication test passed;
-- [ ] article reader/share/CTA works;
-- [ ] `llms.txt`, `llms-full.txt`, sitemap and JSON-LD work;
-- [ ] developer secrets removed/revoked.
+- [ ] GitHub repo client-owned
+- [ ] Vercel project client-owned
+- [ ] domain client-controlled
+- [ ] Vercel watches correct repo/branch
+- [ ] client-owned GitHub token installed
+- [ ] client-owned Anthropic key installed
+- [ ] client-owned Telegram bot/token installed
+- [ ] `TELEGRAM_ALLOWED_USER_IDS` configured
+- [ ] `TELEGRAM_SOURCE_CHANNEL_IDS` configured
+- [ ] public `TELEGRAM_CHANNEL_URL` configured
+- [ ] webhook status points to final domain
+- [ ] bot article test passed
+- [ ] source-channel test passed if feature used
+- [ ] case test passed
+- [ ] article reader/share/CTA works
+- [ ] `/llms.txt` works but is not promoted in frontend
+- [ ] `/llms-full.txt` works
+- [ ] sitemap contains real routes only
+- [ ] JSON-LD present
+- [ ] developer secrets removed/revoked
