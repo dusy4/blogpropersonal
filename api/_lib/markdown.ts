@@ -15,6 +15,14 @@ type TelegramMessage = {
   caption_entities?: Entity[];
 };
 
+type ArticleMarkdownOptions = {
+  slug?: string;
+  publishedAt?: string;
+  image?: string;
+  sourceChannelId?: number;
+  sourceMessageId?: number;
+};
+
 const SENDABLE = new Set([
   'bold', 'italic', 'underline', 'strikethrough', 'spoiler',
   'code', 'pre', 'text_link', 'blockquote',
@@ -24,32 +32,23 @@ export function parseSubmission(message: TelegramMessage) {
   const raw = message.text ?? message.caption ?? '';
   const entities = (message.entities ?? message.caption_entities ?? []) as Entity[];
 
-  // Channel posts may provide the canonical manual takeaways block before or after the title.
-  const leadingManual = extractManualKeyTakeaways(raw);
-  const contentStart = leadingManual?.bodyStart || 0;
-  const content = raw.slice(contentStart);
-  const { title, bodyStart: relativeBodyStart } = splitTitleAndBody(content);
-  const bodyStart = contentStart + relativeBodyStart;
-
-  let bodyText = raw.slice(bodyStart).trimEnd();
-  let bodyEntities = entities
+  // Channel CMS contract:
+  // 1st paragraph = H1/title
+  // 2nd paragraph = Key Takeaways
+  // everything after that = article body; ## / ### remain Markdown headings.
+  const first = splitFirstParagraph(raw, 0);
+  const second = splitFirstParagraph(raw, first.nextStart);
+  const bodyStart = skipParagraphWhitespace(raw, second.nextStart);
+  const bodyText = raw.slice(bodyStart).trimEnd();
+  const bodyEntities = entities
     .filter((entity) => entity.offset >= bodyStart && SENDABLE.has(entity.type))
     .map((entity) => ({ ...entity, offset: entity.offset - bodyStart }));
 
-  const inlineManual = leadingManual ? null : extractManualKeyTakeaways(bodyText);
-  if (inlineManual) {
-    const removed = inlineManual.bodyStart;
-    bodyText = inlineManual.body;
-    bodyEntities = bodyEntities
-      .filter((entity) => entity.offset >= removed)
-      .map((entity) => ({ ...entity, offset: entity.offset - removed }));
-  }
-
   return {
-    title: stripInlineMarkdown(title),
+    title: stripInlineMarkdown(first.value),
+    keyTakeaways: second.value.replace(/\s+/g, ' ').trim().slice(0, 1000),
     bodyText,
     bodyEntities,
-    keyTakeaways: leadingManual?.keyTakeaways || inlineManual?.keyTakeaways || '',
   };
 }
 
@@ -136,13 +135,28 @@ export function toArticleMarkdown(
   keyTakeaways: string,
   bodyText: string,
   bodyEntities: Entity[],
+  options: ArticleMarkdownOptions = {},
 ) {
-  const publishedAt = new Date().toISOString();
+  const publishedAt = options.publishedAt || new Date().toISOString();
   const date = publishedAt.slice(0, 10);
-  const slug = slugify(title);
+  const slug = options.slug || slugify(title);
   const rawMarkdownBody = bodyEntities.length ? applyEntities(bodyText, bodyEntities) : bodyText;
   const markdownBody = normalizeHeadingSyntax(rawMarkdownBody);
-  const content = `---\ntitle: "${yamlEscape(title)}"\nslug: "${slug}"\ndate: "${publishedAt}"\n${keyTakeaways ? `keyTakeaways: "${yamlEscape(keyTakeaways)}"\n` : ''}author: "${yamlEscape(DEFAULT_AUTHOR)}"\n---\n\n${markdownBody.trim()}\n`;
+  const content = [
+    '---',
+    `title: "${yamlEscape(title)}"`,
+    `slug: "${slug}"`,
+    `date: "${publishedAt}"`,
+    `keyTakeaways: "${yamlEscape(keyTakeaways)}"`,
+    `author: "${yamlEscape(DEFAULT_AUTHOR)}"`,
+    options.image ? `image: "${yamlEscape(options.image)}"` : '',
+    options.sourceChannelId != null ? `sourceChannelId: "${options.sourceChannelId}"` : '',
+    options.sourceMessageId != null ? `sourceMessageId: "${options.sourceMessageId}"` : '',
+    '---',
+    '',
+    markdownBody.trim(),
+    '',
+  ].filter(Boolean).join('\n');
   return { date, slug, content };
 }
 
@@ -173,21 +187,25 @@ export function toCaseMarkdown(
   return { date, slug, content };
 }
 
-function splitTitleAndBody(text: string) {
-  const normalized = text.replace(/\r\n/g, '\n');
-  const match = normalized.match(/^\s*([\s\S]*?)\n\s*\n/);
-  if (!match) return { title: normalized.trim(), bodyStart: normalized.length };
-  return { title: match[1].trim(), bodyStart: match[0].length };
+function splitFirstParagraph(text: string, start: number) {
+  const contentStart = skipParagraphWhitespace(text, start);
+  if (contentStart >= text.length) return { value: '', nextStart: text.length };
+  const remainder = text.slice(contentStart);
+  const separator = remainder.match(/\n[ \t]*\n/);
+  if (!separator || separator.index == null) {
+    return { value: remainder.trim(), nextStart: text.length };
+  }
+  const end = contentStart + separator.index;
+  return {
+    value: text.slice(contentStart, end).trim(),
+    nextStart: end + separator[0].length,
+  };
 }
 
-function extractManualKeyTakeaways(body: string) {
-  const match = body.match(/^\s*(?:Key Takeaways|KT|Ключові висновки)\s*:\s*([\s\S]*?)(?:\n\s*\n|$)/i);
-  if (!match) return null;
-  return {
-    keyTakeaways: match[1].replace(/\s+/g, ' ').trim().slice(0, 1000),
-    bodyStart: match[0].length,
-    body: body.slice(match[0].length).trimStart(),
-  };
+function skipParagraphWhitespace(text: string, start: number) {
+  let cursor = start;
+  while (cursor < text.length && /[\s]/.test(text[cursor])) cursor += 1;
+  return cursor;
 }
 
 function normalizeHeadingSyntax(markdown: string) {
