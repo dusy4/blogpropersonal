@@ -75,7 +75,7 @@ const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
           {cases.map((entry)=>(
             <article id={`case-${slugFor(entry)}`} class:list={['case-card',entry.data.url&&'linked']}>
               {entry.data.url&&<a class="case-overlay" href={entry.data.url} target="_blank" rel="noopener" aria-label={`Відкрити кейс: ${entry.data.title}`}></a>}
-              <div class="case-meta">{entry.data.client?<span class="client">{entry.data.client}</span>:<span></span>}{entry.data.url&&<span class="external-arrow" aria-hidden="true">↗</span>}</div>
+              {(entry.data.client||entry.data.url)&&<div class="case-meta">{entry.data.client&&<span class="client">{entry.data.client}</span>}{entry.data.url&&<span class="external-arrow" aria-hidden="true">↗</span>}</div>}
               <h3>{entry.data.title}</h3>
               <p>{entry.data.description}</p>
               {entry.data.result&&<strong>{entry.data.result}</strong>}
