@@ -1,39 +1,15 @@
 ---
-import { TELEGRAM_CHANNEL_URL, CONTACT_EMAIL } from '../config';
-
+import { TELEGRAM_CHANNEL_URL } from '../config';
 const currentYear = new Date().getFullYear();
 ---
 
-<footer class="bg-brand-dark text-white">
-  <div class="mx-auto max-w-7xl px-4 py-12 lg:px-8">
-    <div class="grid gap-8 md:grid-cols-4">
-      <div class="md:col-span-2">
-        <h3 class="text-lg font-bold">ProPersonal Agency</h3>
-        <p class="mt-2 text-sm text-slate-300 max-w-sm">
-          Розумні AI-інтеграції для компаній, що хочуть бути на крок попереду.
-        </p>
-      </div>
-      <div>
-        <h4 class="font-semibold">Розділи</h4>
-        <ul class="mt-2 space-y-1 text-sm text-slate-300">
-          <li><a href="/" class="hover:text-white transition-colors">Головна</a></li>
-          <li><a href="/articles" class="hover:text-white transition-colors">Блог</a></li>
-          <li><a href="/cases" class="hover:text-white transition-colors">Кейси</a></li>
-          <li><a href="/#contact" class="hover:text-white transition-colors">Контакти</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4 class="font-semibold">Контакти</h4>
-        <ul class="mt-2 space-y-1 text-sm text-slate-300">
-          <li><a href="tel:+380000000000" class="hover:text-white transition-colors">+38 (000) 000-00-00</a></li>
-          <li><a href={`mailto:${CONTACT_EMAIL}`} class="hover:text-white transition-colors">{CONTACT_EMAIL}</a></li>
-          <li>м. Київ, вул. Прикладна 1</li>
-        </ul>
-        <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="mt-4 inline-block text-accent hover:text-accent-hover transition-colors">Telegram канал →</a>
-      </div>
-    </div>
-    <div class="mt-12 border-t border-slate-700 pt-6 text-center text-sm text-slate-400">
-      © {currentYear} ProPersonal Agency. Усі права захищені.
+<footer class="border-t border-slate-100 bg-white">
+  <div class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+    <p>© {currentYear} ProPersonal Agency</p>
+    <div class="flex items-center gap-5">
+      <a href="/#articles" class="hover:text-brand">Статті</a>
+      <a href="/#cases" class="hover:text-brand">Кейси</a>
+      <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="hover:text-brand">Telegram</a>
     </div>
   </div>
 </footer>
