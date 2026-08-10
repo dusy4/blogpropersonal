@@ -22,7 +22,7 @@ export const CASES_URL = import.meta.env.CASES_URL || '/cases';
 export const UI = {
   navArticles: 'Статті',
   navCases: 'Кейси',
-  featuredLabel: 'Головна стаття',
+  featuredLabel: 'Остання стаття',
   readArticle: 'Читати статтю',
   articlesTitle: 'Статті',
   articlesDescription: 'Практичні матеріали про AI та автоматизацію',
