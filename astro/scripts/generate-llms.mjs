@@ -15,18 +15,13 @@ const SKIP = process.env.SKIP_LLM_GENERATION === '1';
 const USE_CLAUDE = !SKIP && Boolean(API_KEY);
 
 if (!USE_CLAUDE) {
-  console.warn(
-    SKIP
-      ? 'SKIP_LLM_GENERATION=1: generating deterministic Markdown-derived AI files.'
-      : 'ANTHROPIC_API_KEY is not configured: generating deterministic Markdown-derived AI files. Add the key in Vercel and redeploy to enable Claude generation.',
-  );
+  console.warn(SKIP
+    ? 'SKIP_LLM_GENERATION=1: generating deterministic Markdown-derived AI files.'
+    : 'ANTHROPIC_API_KEY is not configured: generating deterministic Markdown-derived AI files. Add the key in Vercel and redeploy to enable Claude generation.');
 }
-if (SITE_URL === 'https://example.com') {
-  console.warn('SITE_URL is not configured and no Vercel production URL was available; generated canonical URLs use https://example.com.');
-}
+if (SITE_URL === 'https://example.com') console.warn('SITE_URL is not configured and no Vercel production URL was available; generated canonical URLs use https://example.com.');
 
 await fs.mkdir(PUBLIC, { recursive: true });
-
 const articles = await loadDocs(ARTICLE_DIR, 'articles');
 const cases = await loadDocs(CASE_DIR, 'cases');
 
@@ -34,12 +29,7 @@ for (const doc of articles) {
   if (!doc.meta.keyTakeaways) {
     const fallback = fallbackSummary(doc.body);
     const keyTakeaways = USE_CLAUDE
-      ? await claudeOrFallback(
-          'Return only 3-4 concise factual Key Takeaways sentences in the same language as the supplied article. No heading, bullets, code fences, or commentary.',
-          doc.raw,
-          500,
-          fallback,
-        )
+      ? await claudeOrFallback('Return only 3-4 concise factual Key Takeaways sentences in the same language as the supplied article. No heading, bullets, code fences, or commentary.', doc.raw, 500, fallback)
       : fallback;
     await injectFrontmatterField(doc.file, 'keyTakeaways', keyTakeaways);
     doc.meta.keyTakeaways = keyTakeaways;
@@ -53,44 +43,19 @@ const caseEntries = [];
 for (const doc of cases) caseEntries.push(await makeLlmsEntry(doc));
 
 const llms = [
-  '# ProPersonal',
-  '',
-  '> Практична база знань про AI-інтеграції, автоматизацію бізнес-процесів, статті та кейси.',
-  '',
-  '## Articles',
-  '',
-  ...(articleEntries.length ? articleEntries : ['- No articles published yet.']),
-  '',
-  '## Cases',
-  '',
-  ...(caseEntries.length ? caseEntries : ['- No cases published yet.']),
-  '',
-  '## Full content',
-  '',
-  `- [llms-full.txt](${SITE_URL}/llms-full.txt): Full Markdown-derived text of all published articles and cases.`,
-  '',
+  '# ProPersonal','',
+  '> Практична база знань про AI-інтеграції, автоматизацію бізнес-процесів, статті та кейси.','',
+  '## Articles','',...(articleEntries.length ? articleEntries : ['- No articles published yet.']),'',
+  '## Cases','',...(caseEntries.length ? caseEntries : ['- No cases published yet.']),'',
+  '## Full content','',
+  `- [llms-full.txt](${SITE_URL}/llms-full.txt): Full Markdown-derived text of all published articles and cases.`,'',
 ].join('\n');
 
-const full = [
-  '# ProPersonal — full content',
-  '',
-  `Source site: ${SITE_URL}`,
-  '',
-  ...articles.flatMap((doc) => fullBlock(doc)),
-  ...cases.flatMap((doc) => fullBlock(doc)),
-].join('\n');
-
+const full = ['# ProPersonal — full content','',`Source site: ${SITE_URL}`,'',...articles.flatMap(fullBlock),...cases.flatMap(fullBlock)].join('\n');
 await fs.writeFile(path.join(PUBLIC, 'llms.txt'), llms, 'utf8');
 await fs.writeFile(path.join(PUBLIC, 'llms-full.txt'), full, 'utf8');
-await fs.writeFile(
-  path.join(PUBLIC, 'robots.txt'),
-  `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
-  'utf8',
-);
-
-console.log(
-  `Generated llms.txt (${articles.length} articles, ${cases.length} cases) with ${USE_CLAUDE ? MODEL : 'deterministic Markdown fallback'}.`,
-);
+await fs.writeFile(path.join(PUBLIC, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`, 'utf8');
+console.log(`Generated llms.txt (${articles.length} articles, ${cases.length} cases) with ${USE_CLAUDE ? MODEL : 'deterministic Markdown fallback'}.`);
 
 async function loadDocs(dir, type) {
   const names = (await fs.readdir(dir)).filter((name) => name.endsWith('.md')).sort();
@@ -100,9 +65,7 @@ async function loadDocs(dir, type) {
     const raw = await fs.readFile(file, 'utf8');
     const { meta, body } = parseMarkdown(raw);
     const slug = meta.slug || name.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
-    const url = type === 'articles'
-      ? `${SITE_URL}/articles/${slug}`
-      : `${SITE_URL}/#case-${slug}`;
+    const url = type === 'articles' ? `${SITE_URL}/articles/${slug}` : (meta.url || `${SITE_URL}/#case-${slug}`);
     docs.push({ file, raw, meta, body, slug, type, url });
   }
   return docs;
@@ -117,9 +80,7 @@ function parseMarkdown(raw) {
     if (colon < 0) continue;
     const key = line.slice(0, colon).trim();
     let value = line.slice(colon + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    }
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     meta[key] = value;
   }
   return { meta, body: match[2].trim() };
@@ -129,91 +90,32 @@ async function makeLlmsEntry(doc) {
   const title = doc.meta.title || doc.slug;
   const fallback = doc.meta.keyTakeaways || doc.meta.description || fallbackSummary(doc.body);
   if (!USE_CLAUDE) return `- [${title}](${doc.url}): ${oneLine(fallback)}`;
-
   const output = await claudeOrFallback(
     `Convert the supplied Markdown document into exactly ONE llms.txt resource bullet. Return only the bullet and nothing else. Use this exact format:\n- [TITLE](${doc.url}): 1-3 concise factual sentences describing the document for an AI agent.\nPreserve the document language. Use the supplied canonical URL exactly. Do not add code fences, headings, preambles, or extra lines.`,
-    doc.raw,
-    700,
-    `- [${title}](${doc.url}): ${oneLine(fallback)}`,
+    doc.raw, 700, `- [${title}](${doc.url}): ${oneLine(fallback)}`,
   );
   return normalizeEntry(output, title, doc.url, fallback);
 }
 
 async function claudeOrFallback(system, content, maxTokens, fallback) {
-  try {
-    return await claude(system, content, maxTokens);
-  } catch (error) {
-    console.warn(`Anthropic generation failed; using Markdown fallback. ${error instanceof Error ? error.message : String(error)}`);
-    return fallback;
-  }
+  try { return await claude(system, content, maxTokens); }
+  catch (error) { console.warn(`Anthropic generation failed; using Markdown fallback. ${error instanceof Error ? error.message : String(error)}`); return fallback; }
 }
 
 async function claude(system, content, maxTokens) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      thinking: { type: 'disabled' },
-      system,
-      messages: [{ role: 'user', content }],
-    }),
+    method:'POST',
+    headers:{'content-type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01'},
+    body:JSON.stringify({model:MODEL,max_tokens:maxTokens,thinking:{type:'disabled'},system,messages:[{role:'user',content}]}),
   });
   if (!response.ok) throw new Error(`Anthropic build call ${response.status}: ${await response.text()}`);
   const data = await response.json();
   return (data.content || []).filter((block) => block.type === 'text').map((block) => block.text || '').join('').trim();
 }
 
-function normalizeEntry(output, title, url, fallback) {
-  const cleaned = output.replace(/^```(?:markdown)?\s*/i, '').replace(/```$/i, '').trim();
-  const line = cleaned.split('\n').find((value) => value.trim().startsWith('- ['));
-  if (line) return line.trim();
-  return `- [${title}](${url}): ${oneLine(cleaned || fallback)}`;
-}
-
-function fullBlock(doc) {
-  const title = doc.meta.title || doc.slug;
-  return [
-    `## ${title}`,
-    '',
-    `Canonical URL: ${doc.url}`,
-    '',
-    doc.raw.trim(),
-    '',
-    '---',
-    '',
-  ];
-}
-
-async function injectFrontmatterField(file, key, value) {
-  const raw = await fs.readFile(file, 'utf8');
-  const escaped = String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ');
-  if (/^---\n/.test(raw)) {
-    const end = raw.indexOf('\n---', 4);
-    if (end !== -1) {
-      const next = `${raw.slice(0, end)}\n${key}: "${escaped}"${raw.slice(end)}`;
-      await fs.writeFile(file, next, 'utf8');
-      return;
-    }
-  }
-  throw new Error(`Cannot inject ${key}: invalid frontmatter in ${file}`);
-}
-
-function fallbackSummary(markdown) {
-  return oneLine(markdown.replace(/```[\s\S]*?```/g, ' ').replace(/\[([^\]]+)]\([^)]*\)/g, '$1').replace(/[#>*_`~|\-]/g, ' ')).slice(0, 360);
-}
-
-function oneLine(value) {
-  return String(value).replace(/\s+/g, ' ').trim();
-}
-
-function normalizeSiteUrl(value) {
-  const trimmed = String(value || '').trim().replace(/\/$/, '');
-  if (!trimmed) return 'https://example.com';
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-}
+function normalizeEntry(output,title,url,fallback){const cleaned=output.replace(/^```(?:markdown)?\s*/i,'').replace(/```$/i,'').trim();const line=cleaned.split('\n').find((value)=>value.trim().startsWith('- ['));return line?line.trim():`- [${title}](${url}): ${oneLine(cleaned||fallback)}`;}
+function fullBlock(doc){const title=doc.meta.title||doc.slug;return [`## ${title}`,'',`Canonical URL: ${doc.url}`,'',doc.raw.trim(),'','---',''];}
+async function injectFrontmatterField(file,key,value){const raw=await fs.readFile(file,'utf8');const escaped=String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\r?\n/g,' ');if(/^---\n/.test(raw)){const end=raw.indexOf('\n---',4);if(end!==-1){await fs.writeFile(file,`${raw.slice(0,end)}\n${key}: "${escaped}"${raw.slice(end)}`,'utf8');return;}}throw new Error(`Cannot inject ${key}: invalid frontmatter in ${file}`);}
+function fallbackSummary(markdown){return oneLine(markdown.replace(/```[\s\S]*?```/g,' ').replace(/\[([^\]]+)]\([^)]*\)/g,'$1').replace(/[#>*_`~|\-]/g,' ')).slice(0,360);}
+function oneLine(value){return String(value).replace(/\s+/g,' ').trim();}
+function normalizeSiteUrl(value){const trimmed=String(value||'').trim().replace(/\/$/,'');if(!trimmed)return'https://example.com';return/^https?:\/\//i.test(trimmed)?trimmed:`https://${trimmed}`;}
