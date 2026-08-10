@@ -5,7 +5,7 @@ import {
   isAllowed, isSourceChannelAllowed, missingRuntimeConfig,
 } from './_lib/config';
 import { generateKeyTakeaways } from './_lib/anthropic';
-import { commitFile } from './_lib/github';
+import { commitFile, deleteFile, listMarkdownEntries, type ContentEntry } from './_lib/github';
 import { parseSubmission, toArticleMarkdown, toCaseMarkdown } from './_lib/markdown';
 import { answerCallbackQuery, editMessageText, sendMessage } from './_lib/telegram';
 
@@ -13,9 +13,14 @@ type ArticleFieldKey = 'title' | 'keyTakeaways' | 'body';
 type ArticleDraft = { title: string; keyTakeaways: string; bodySet: boolean };
 type CaseFieldKey = 'title' | 'client' | 'url' | 'result' | 'description' | 'notes';
 type CaseDraft = Record<CaseFieldKey, string>;
+type DeleteKind = 'article' | 'case';
 
 const ARTICLE_FIELD_KEYS: ArticleFieldKey[] = ['title', 'keyTakeaways', 'body'];
 const CASE_FIELD_KEYS: CaseFieldKey[] = ['title', 'client', 'url', 'result', 'description', 'notes'];
+const DELETE_ARTICLE_BUTTON = '🗑 Видалити статтю';
+const DELETE_CASE_BUTTON = '🗑 Видалити кейс';
+const LIVE_CHECK_TIMEOUT_MS = 21_500;
+const LIVE_CHECK_INTERVAL_MS = 1_500;
 
 export default {
   async fetch(request: Request) {
@@ -82,6 +87,9 @@ async function handleMessage(message: any) {
       disable_web_page_preview: true,
     }));
   }
+
+  if (text === DELETE_ARTICLE_BUTTON) return void (await sendDeletePicker(chatId, 'article'));
+  if (text === DELETE_CASE_BUTTON) return void (await sendDeletePicker(chatId, 'case'));
 
   const replied = message.reply_to_message?.text || '';
   if (replied.startsWith(CMS.articleEditPrefix)) {
@@ -207,6 +215,60 @@ async function handleCallback(callback: any) {
     return void (await answerCallbackQuery(callback.id, 'Публікацію для цього акаунта вимкнено.', true));
   }
 
+  if (action === 'delete_close') {
+    await answerCallbackQuery(callback.id, 'Закрито');
+    return void (await editMessageText(chatId, messageId, 'Закрито.'));
+  }
+
+  const deletePick = action.match(/^delete_pick:([ac]):([0-9a-f]{8,40})$/i);
+  if (deletePick) {
+    const kind = deletePick[1] === 'a' ? 'article' : 'case';
+    const entry = await findDeleteEntry(kind, deletePick[2]);
+    if (!entry) {
+      return void (await answerCallbackQuery(callback.id, 'Запис уже змінився або був видалений. Відкрийте список знову.', true));
+    }
+
+    await answerCallbackQuery(callback.id);
+    return void (await editMessageText(
+      chatId,
+      messageId,
+      `⚠️ Точно видалити ${kind === 'article' ? 'статтю' : 'кейс'}?\n\n${entry.title}\n\nПісля підтвердження файл буде видалено з GitHub і Vercel автоматично оновить сайт.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🗑 Так, видалити', callback_data: `delete_confirm:${deletePick[1]}:${entry.sha.slice(0, 12)}` }],
+            [{ text: '❌ Скасувати', callback_data: 'delete_close' }],
+          ],
+        },
+      },
+    ));
+  }
+
+  const deleteConfirm = action.match(/^delete_confirm:([ac]):([0-9a-f]{8,40})$/i);
+  if (deleteConfirm) {
+    const kind = deleteConfirm[1] === 'a' ? 'article' : 'case';
+    const entry = await findDeleteEntry(kind, deleteConfirm[2]);
+    if (!entry) {
+      return void (await answerCallbackQuery(callback.id, 'Запис уже змінився або був видалений. Відкрийте список знову.', true));
+    }
+
+    await answerCallbackQuery(callback.id, 'Видалення розпочато');
+    await editMessageText(chatId, messageId, `⏳ Видаляю «${entry.title}» і чекаю Vercel deployment…`);
+    await deleteFile(entry.path, entry.sha, `delete ${kind}: ${entry.slug}`);
+
+    const live = kind === 'article'
+      ? await waitForArticleDeleted(`${SITE_URL}/articles/${entry.slug}`)
+      : await waitForCasePresence(entry.slug, false);
+
+    if (live) {
+      await editMessageText(chatId, messageId, `✅ ${kind === 'article' ? 'Статтю' : 'Кейс'} видалено. Зміни вже live.`);
+      return void (await sendMessage(chatId, '✅ Vercel deployment завершено, production уже оновлений.', menu()));
+    }
+
+    await editMessageText(chatId, messageId, `⏳ ${kind === 'article' ? 'Статтю' : 'Кейс'} видалено з GitHub, але live deployment ще не підтверджено.`);
+    return void (await sendMessage(chatId, 'Vercel не встиг підтвердитися в межах очікування функції. GitHub-зміна вже збережена.', menu()));
+  }
+
   if (action === 'cancel') {
     await answerCallbackQuery(callback.id, 'Скасовано');
     return void (await editMessageText(chatId, messageId, '❌ Чернетку скасовано.'));
@@ -247,7 +309,7 @@ async function handleCallback(callback: any) {
     }
 
     await answerCallbackQuery(callback.id, 'Публікацію розпочато');
-    await sendMessage(chatId, '⏳ Публікую статтю…', menu());
+    await sendMessage(chatId, '⏳ Публікую статтю і чекаю Vercel deployment…', menu());
 
     const bodyEntities = bodyMessage.entities || bodyMessage.caption_entities || [];
     const keyTakeaways = draft.keyTakeaways || await generateKeyTakeaways(bodyText);
@@ -255,10 +317,18 @@ async function handleCallback(callback: any) {
     await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article: ${post.slug}`);
 
     const liveUrl = `${SITE_URL}/articles/${post.slug}`;
-    await editMessageText(chatId, messageId, '✅ Чернетку статті опубліковано.');
+    const publishedAt = extractFrontmatterDate(post.content);
+    const live = await waitForArticleLive(liveUrl, publishedAt);
+
+    if (live) {
+      await editMessageText(chatId, messageId, '✅ Чернетку статті опубліковано.');
+      return void (await sendMessage(chatId, `✅ Стаття вже live.\n\n🔗 ${liveUrl}`, menu()));
+    }
+
+    await editMessageText(chatId, messageId, '⏳ Статтю збережено в GitHub, але live deployment ще не підтверджено.');
     return void (await sendMessage(
       chatId,
-      `✅ Статтю успішно опубліковано.\n\n🔗 ${liveUrl}\n\nСторінка може з’явитися після завершення Vercel deployment.`,
+      `Vercel не встиг підтвердитися в межах очікування функції.\n\n🔗 ${liveUrl}`,
       menu(),
     ));
   }
@@ -273,7 +343,7 @@ async function handleCallback(callback: any) {
     }
 
     await answerCallbackQuery(callback.id, 'Публікацію розпочато');
-    await sendMessage(chatId, '⏳ Публікую кейс…', menu());
+    await sendMessage(chatId, '⏳ Публікую кейс і чекаю Vercel deployment…', menu());
 
     const post = toCaseMarkdown(draft.title, draft.notes, [], {
       client: draft.client,
@@ -285,15 +355,48 @@ async function handleCallback(callback: any) {
 
     const liveUrl = `${SITE_URL}/#case-${post.slug}`;
     const external = draft.url ? `\nЗовнішнє джерело: ${draft.url}` : '';
-    await editMessageText(chatId, messageId, '✅ Чернетку кейсу опубліковано.');
-    return void (await sendMessage(
-      chatId,
-      `✅ Кейс успішно опубліковано.\n\n🔗 ${liveUrl}${external}\n\nСторінка може оновитися після завершення Vercel deployment.`,
-      menu(),
-    ));
+    const live = await waitForCasePresence(post.slug, true);
+
+    if (live) {
+      await editMessageText(chatId, messageId, '✅ Чернетку кейсу опубліковано.');
+      return void (await sendMessage(chatId, `✅ Кейс уже live.\n\n🔗 ${liveUrl}${external}`, menu()));
+    }
+
+    await editMessageText(chatId, messageId, '⏳ Кейс збережено в GitHub, але live deployment ще не підтверджено.');
+    return void (await sendMessage(chatId, `Vercel не встиг підтвердитися в межах очікування функції.\n\n🔗 ${liveUrl}${external}`, menu()));
   }
 
   await answerCallbackQuery(callback.id);
+}
+
+async function sendDeletePicker(chatId: number, kind: DeleteKind) {
+  const entries = (await listMarkdownEntries(kind === 'article' ? ARTICLE_PATH : CASE_PATH)).slice(0, 20);
+  if (!entries.length) {
+    return await sendMessage(chatId, kind === 'article' ? 'Немає статей для видалення.' : 'Немає кейсів для видалення.', menu());
+  }
+
+  const code = kind === 'article' ? 'a' : 'c';
+  await sendMessage(
+    chatId,
+    `🗑 Видалення ${kind === 'article' ? 'статті' : 'кейсу'}\n\nОберіть запис. Перед видаленням буде окреме підтвердження.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          ...entries.map((entry) => [{
+            text: `🗑 ${truncate(entry.title, 48)}`,
+            callback_data: `delete_pick:${code}:${entry.sha.slice(0, 12)}`,
+          }]),
+          [{ text: '❌ Закрити', callback_data: 'delete_close' }],
+        ],
+      },
+      disable_web_page_preview: true,
+    },
+  );
+}
+
+async function findDeleteEntry(kind: DeleteKind, shaPrefix: string): Promise<ContentEntry | null> {
+  const entries = await listMarkdownEntries(kind === 'article' ? ARTICLE_PATH : CASE_PATH);
+  return entries.find((entry) => entry.sha.startsWith(shaPrefix)) || null;
 }
 
 async function sendArticleFieldPrompt(
@@ -308,7 +411,7 @@ async function sendArticleFieldPrompt(
     ? (draft.bodySet ? '✅ додано' : CMS.clearValue)
     : (draft[field] || CMS.clearValue);
   const instruction = field === 'body'
-    ? `Відповідайте на це повідомлення повним текстом статті одним повідомленням. Щоб очистити поле, надішліть «${CMS.clearValue}».`
+    ? `Відповідайте на це повідомлення повним текстом статті одним повідомленням. H1 уже береться з поля «Заголовок». Для розділів використовуйте «## Назва розділу» (H2), для підрозділів — «### Назва підрозділу» (H3). Щоб очистити поле, надішліть «${CMS.clearValue}».`
     : field === 'keyTakeaways'
       ? `Відповідайте новими ключовими висновками. Поле необов’язкове: якщо залишити порожнім, Claude згенерує його під час публікації. Щоб очистити поле, надішліть «${CMS.clearValue}».`
       : `Відповідайте новим заголовком. Щоб очистити поле, надішліть «${CMS.clearValue}».`;
@@ -378,7 +481,7 @@ async function handleChannelPost(message: any) {
 async function showHome(chatId: number, fromId: number) {
   const allowed = isAllowed(fromId);
   const intro = allowed
-    ? 'ProPersonal CMS готова. Оберіть, що хочете опублікувати.'
+    ? 'ProPersonal CMS готова. Оберіть дію.'
     : `ProPersonal CMS\n\nВаш Telegram ID: ${fromId}\nПублікація заблокована, доки цей ID не буде додано до TELEGRAM_ALLOWED_USER_IDS у Vercel. Значення 0 дозволяє всім користувачам.`;
   await sendMessage(chatId, intro, menu());
 }
@@ -412,6 +515,7 @@ function menu() {
     reply_markup: {
       keyboard: [
         [{ text: CMS.articleButton }, { text: CMS.caseButton }],
+        [{ text: DELETE_ARTICLE_BUTTON }, { text: DELETE_CASE_BUTTON }],
         [{ text: CMS.statusButton }, { text: CMS.idButton }, { text: CMS.helpButton }],
       ],
       resize_keyboard: true,
@@ -553,16 +657,73 @@ function caseFieldFromPrompt(prompt: string): CaseFieldKey | null {
   return null;
 }
 
+function extractFrontmatterDate(content: string) {
+  return content.match(/^date:\s*"([^"]+)"/m)?.[1] || '';
+}
+
+async function waitForArticleLive(url: string, publishedAt: string) {
+  return waitForCondition(async () => {
+    const response = await fetch(freshUrl(url), { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+    if (!response.ok) return false;
+    const html = await response.text();
+    return publishedAt ? html.includes(publishedAt) : true;
+  });
+}
+
+async function waitForArticleDeleted(url: string) {
+  return waitForCondition(async () => {
+    const response = await fetch(freshUrl(url), { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+    return response.status === 404;
+  });
+}
+
+async function waitForCasePresence(slug: string, shouldExist: boolean) {
+  return waitForCondition(async () => {
+    const response = await fetch(freshUrl(`${SITE_URL}/`), { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+    if (!response.ok) return false;
+    const html = await response.text();
+    const exists = html.includes(`id="case-${slug}"`);
+    return shouldExist ? exists : !exists;
+  });
+}
+
+async function waitForCondition(check: () => Promise<boolean>) {
+  const deadline = Date.now() + LIVE_CHECK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      if (await check()) return true;
+    } catch (error) {
+      console.warn('live deployment check failed', error);
+    }
+    await sleep(LIVE_CHECK_INTERVAL_MS);
+  }
+  return false;
+}
+
+function freshUrl(url: string) {
+  return `${url}${url.includes('?') ? '&' : '?'}_cms=${Date.now()}`;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function truncate(value: string, max: number) {
+  return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 1))}…`;
+}
+
 function localizeError(message: string) {
   return message
     .replace('TELEGRAM_BOT_TOKEN is not configured.', 'не налаштовано TELEGRAM_BOT_TOKEN.')
     .replace('ANTHROPIC_API_KEY is not configured.', 'не налаштовано ANTHROPIC_API_KEY. Заповніть «Ключові висновки» вручну або додайте ключ Anthropic.')
+    .replace('GitHub publishing variables are not fully configured.', 'не повністю налаштовані GitHub-змінні для публікації.')
     .replace('Case URL must start with http:// or https://', 'посилання кейсу має починатися з http:// або https://')
     .replace('Not Found', 'не знайдено');
 }
 
 const HELP =
   '<b>Публікація контенту</b>\n\n' +
-  `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Заповніть кнопками «Заголовок», «Ключові висновки» та «Текст».\n3. «Ключові висновки» можна залишити порожніми — тоді Claude згенерує їх під час публікації.\n4. Натисніть <b>${CMS.publishArticle}</b>.\n\n` +
-  '<b>Кейс</b>\n1. Натисніть <b>💼 Новий кейс</b>.\n2. У чернетці натискайте окремі кнопки «Назва», «Клієнт», «Посилання», «Результат», «Опис», «Нотатки» та заповнюйте лише потрібні поля.\n3. Кожна відповідь одразу зберігається в чернетці.\n4. Натисніть <b>✅ Опублікувати кейс</b>.\n\n' +
+  `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Заповніть кнопками «Заголовок», «Ключові висновки» та «Текст».\n3. Для H2/H3 у тексті використовуйте ## та ###.\n4. Натисніть <b>${CMS.publishArticle}</b>. Бот підтвердить успіх лише після того, як production стане live.\n\n` +
+  '<b>Кейс</b>\n1. Натисніть <b>💼 Новий кейс</b>.\n2. Заповніть потрібні поля кнопками.\n3. Натисніть <b>✅ Опублікувати кейс</b>.\n\n' +
+  `<b>Видалення</b>\nНатисніть <b>${DELETE_ARTICLE_BUTTON}</b> або <b>${DELETE_CASE_BUTTON}</b>, оберіть запис і підтвердьте видалення. Бот чекатиме, доки зміни реально з’являться на production.\n\n` +
   'Якщо у кейсу задано «Посилання», його картка на сайті відкриватиме зовнішнє джерело.';
