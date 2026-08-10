@@ -7,7 +7,7 @@ import {
 import { generateKeyTakeaways } from './_lib/anthropic';
 import { commitFile, deleteFile, listMarkdownEntries, type ContentEntry } from './_lib/github';
 import { parseSubmission, toArticleMarkdown, toCaseMarkdown } from './_lib/markdown';
-import { answerCallbackQuery, editMessageText, sendMessage } from './_lib/telegram';
+import { answerCallbackQuery, editMessageReplyMarkup, editMessageText, sendMessage } from './_lib/telegram';
 
 type ArticleFieldKey = 'title' | 'keyTakeaways' | 'body';
 type ArticleDraft = { title: string; keyTakeaways: string; bodySet: boolean };
@@ -215,6 +215,10 @@ async function handleCallback(callback: any) {
     return void (await answerCallbackQuery(callback.id, 'Публікацію для цього акаунта вимкнено.', true));
   }
 
+  if (action === 'publishing') {
+    return void (await answerCallbackQuery(callback.id, 'Публікація вже триває.'));
+  }
+
   if (action === 'delete_close') {
     await answerCallbackQuery(callback.id, 'Закрито');
     return void (await editMessageText(chatId, messageId, 'Закрито.'));
@@ -309,6 +313,7 @@ async function handleCallback(callback: any) {
     }
 
     await answerCallbackQuery(callback.id, 'Публікацію розпочато');
+    await editMessageReplyMarkup(chatId, messageId, publishingKeyboard());
     await sendMessage(chatId, '⏳ Публікую статтю і чекаю Vercel deployment…', menu());
 
     const bodyEntities = bodyMessage.entities || bodyMessage.caption_entities || [];
@@ -319,13 +324,12 @@ async function handleCallback(callback: any) {
     const liveUrl = `${SITE_URL}/articles/${post.slug}`;
     const publishedAt = extractFrontmatterDate(post.content);
     const live = await waitForArticleLive(liveUrl, publishedAt);
+    await editMessageReplyMarkup(chatId, messageId);
 
     if (live) {
-      await editMessageText(chatId, messageId, '✅ Чернетку статті опубліковано.');
       return void (await sendMessage(chatId, `✅ Стаття вже live.\n\n🔗 ${liveUrl}`, menu()));
     }
 
-    await editMessageText(chatId, messageId, '⏳ Статтю збережено в GitHub, але live deployment ще не підтверджено.');
     return void (await sendMessage(
       chatId,
       `Vercel не встиг підтвердитися в межах очікування функції.\n\n🔗 ${liveUrl}`,
@@ -343,6 +347,7 @@ async function handleCallback(callback: any) {
     }
 
     await answerCallbackQuery(callback.id, 'Публікацію розпочато');
+    await editMessageReplyMarkup(chatId, messageId, publishingKeyboard());
     await sendMessage(chatId, '⏳ Публікую кейс і чекаю Vercel deployment…', menu());
 
     const post = toCaseMarkdown(draft.title, draft.notes, [], {
@@ -356,13 +361,12 @@ async function handleCallback(callback: any) {
     const liveUrl = `${SITE_URL}/#case-${post.slug}`;
     const external = draft.url ? `\nЗовнішнє джерело: ${draft.url}` : '';
     const live = await waitForCasePresence(post.slug, true);
+    await editMessageReplyMarkup(chatId, messageId);
 
     if (live) {
-      await editMessageText(chatId, messageId, '✅ Чернетку кейсу опубліковано.');
       return void (await sendMessage(chatId, `✅ Кейс уже live.\n\n🔗 ${liveUrl}${external}`, menu()));
     }
 
-    await editMessageText(chatId, messageId, '⏳ Кейс збережено в GitHub, але live deployment ще не підтверджено.');
     return void (await sendMessage(chatId, `Vercel не встиг підтвердитися в межах очікування функції.\n\n🔗 ${liveUrl}${external}`, menu()));
   }
 
@@ -556,6 +560,12 @@ function caseKeyboard() {
       [{ text: CMS.publishCase, callback_data: 'publish_case' }],
       [{ text: CMS.cancel, callback_data: 'cancel' }],
     ],
+  };
+}
+
+function publishingKeyboard() {
+  return {
+    inline_keyboard: [[{ text: '⏳ Публікація триває…', callback_data: 'publishing' }]],
   };
 }
 
