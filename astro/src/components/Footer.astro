@@ -1,67 +1,41 @@
 ---
-import { TELEGRAM_CHANNEL_URL } from '../config';
+import { SITE_NAME, TELEGRAM_CHANNEL_URL, UI } from '../config';
 const currentYear = new Date().getFullYear();
 ---
 
 <footer class="site-footer">
   <div class="site-footer__inner">
     <div class="footer-left">
-      <p>© {currentYear} ProPersonal</p>
+      <p>© {currentYear} {SITE_NAME}</p>
       <nav aria-label="Навігація у футері">
-        <a href="/#articles">Статті</a>
-        <a href="/#cases">Кейси</a>
+        <a href="/#articles">{UI.navArticles}</a>
+        <a href="/#cases">{UI.navCases}</a>
         <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener">Telegram</a>
       </nav>
     </div>
-    <p class="footer-tagline">Створено для тих, хто будує майбутнє разом з AI.</p>
+    <p class="footer-tagline">{UI.footerTagline}</p>
   </div>
 </footer>
 
 <style>
-  .site-footer {
-    border-top: 1px solid #e5e7e0;
-    background: #f8f8f4;
-  }
-
+  .site-footer { background:#f8f8f4; border-top:1px solid #e5e7e0; }
   .site-footer__inner {
-    width: min(1120px, calc(100% - 40px));
-    margin: 0 auto;
-    padding: 24px 0 30px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 28px;
-    color: #727b78;
+    color:#727b78;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:28px;
+    width:min(1120px,100% - 40px);
+    margin:0 auto;
+    padding:24px 0 30px;
+    display:flex;
   }
-
-  .footer-left > p,
-  .footer-tagline {
-    margin: 0;
-    font-size: 11px;
-  }
-
-  .footer-left nav {
-    display: flex;
-    gap: 17px;
-    margin-top: 7px;
-  }
-
-  .footer-left a {
-    color: #315451;
-    font-size: 11px;
-    font-weight: 600;
-  }
-
-  .footer-left a:hover { color: #0f4c4d; }
-  .footer-tagline { text-align: right; }
-
-  @media (max-width: 700px) {
-    .site-footer__inner {
-      width: min(100% - 24px, 1120px);
-      align-items: flex-start;
-      flex-direction: column;
-      gap: 17px;
-    }
-    .footer-tagline { text-align: left; }
+  .footer-left>p,.footer-tagline { margin:0; font-size:11px; }
+  .footer-left nav { gap:17px; margin-top:7px; display:flex; }
+  .footer-left a { color:#315451; font-size:11px; font-weight:600; }
+  .footer-left a:hover { color:#0f4c4d; }
+  .footer-tagline { text-align:right; }
+  @media (max-width:700px) {
+    .site-footer__inner { flex-direction:column; align-items:flex-start; gap:17px; width:min(100% - 24px,1120px); }
+    .footer-tagline { text-align:left; }
   }
 </style>
