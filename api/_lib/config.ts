@@ -20,22 +20,42 @@ export const ALLOWED_IDS = (process.env.ALLOWED_IDS || '')
   .map(Number);
 
 export const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'Pro Personal Agency';
+export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'ProPersonal';
 
-// Repository content locations. Change here only if the Astro structure changes.
+// Шляхи до контенту в репозиторії. Змінювати лише якщо змінюється структура Astro.
 export const ARTICLE_PATH = process.env.ARTICLE_PATH || 'astro/src/content/articles';
 export const CASE_PATH = process.env.CASE_PATH || 'astro/src/content/cases';
 
-// Telegram CMS copy/configuration. Per-case external URLs are content and are
-// entered in Telegram as `URL: https://...`; they are not Vercel secrets.
+// Увесь видимий текст Telegram CMS та поля форми кейсу зібрані тут.
+// Посилання конкретного кейсу є частиною контенту, а не Vercel-конфігурацією.
 export const CMS = {
-  articleButton: '📝 New article',
-  caseButton: '💼 New case',
-  statusButton: '⚙️ Status',
-  idButton: '🆔 My ID',
-  helpButton: '❓ Help',
-  articlePrompt: '📝 NEW ARTICLE\n\nReply with:\n\nTitle\n\nArticle body\n\nOptional: put “Key Takeaways: …” as the first paragraph. If omitted, Claude generates it.',
-  casePrompt: '💼 NEW CASE\n\nReply with:\n\nCase title\n\nClient: Company name (optional)\nURL: https://external-source.example/case (optional)\nResult: measurable result (optional)\nDescription: short card description (optional)\n\nOptional longer case notes/body after the fields. If URL is supplied, the website card opens that external source.',
+  articleButton: '📝 Нова стаття',
+  caseButton: '💼 Новий кейс',
+  statusButton: '⚙️ Стан',
+  idButton: '🆔 Мій ID',
+  helpButton: '❓ Допомога',
+
+  articlePrompt: '📝 НОВА СТАТТЯ\n\nВідповідайте на це повідомлення:\n\nЗаголовок\n\nТекст статті\n\nЗа бажанням першим абзацом додайте “Ключові висновки: …”. Якщо їх немає, Claude згенерує їх автоматично.',
+
+  caseDraftTitle: '🧩 Чернетка кейсу',
+  caseEditPrefix: '✏️ Редагування поля кейсу:',
+  caseDraftMarker: '--- ПОТОЧНА ЧЕРНЕТКА ---',
+  clearValue: '—',
+
+  caseFields: {
+    title: { label: 'Назва', button: '✏️ Назва', maxLength: 160 },
+    client: { label: 'Клієнт', button: '🏢 Клієнт', maxLength: 120 },
+    url: { label: 'Посилання', button: '🔗 Посилання', maxLength: 1000 },
+    result: { label: 'Результат', button: '📈 Результат', maxLength: 300 },
+    description: { label: 'Опис', button: '📝 Опис', maxLength: 500 },
+    notes: { label: 'Нотатки', button: '📎 Нотатки', maxLength: 1400 },
+  },
+
+  publishArticle: '✅ Опублікувати статтю',
+  publishCase: '✅ Опублікувати кейс',
+  cancel: '❌ Скасувати',
+  editTakeaways: '✏️ Ключові висновки',
+  regenerateTakeaways: '♻️ Згенерувати знову',
 } as const;
 
 export function isAllowed(id: number): boolean {
