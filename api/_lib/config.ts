@@ -39,7 +39,18 @@ export const TELEGRAM_SOURCE_CHANNEL_IDS = sourceChannelsRaw === '0'
       .map(Number)
       .filter(Number.isFinite);
 
-export const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
+// Vercel provides the production project domain automatically at runtime.
+// SITE_URL is only an optional override for non-Vercel deployments or a deliberately chosen canonical domain.
+const rawSiteUrl = (
+  process.env.SITE_URL ||
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+  process.env.VERCEL_URL ||
+  ''
+).trim();
+export const SITE_URL = rawSiteUrl
+  ? (/^https?:\/\//i.test(rawSiteUrl) ? rawSiteUrl : `https://${rawSiteUrl}`).replace(/\/$/, '')
+  : '';
+
 export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'ProPersonal';
 
 // Шляхи до контенту в репозиторії. Змінювати лише якщо змінюється структура Astro.
@@ -96,6 +107,5 @@ export function missingRuntimeConfig(): string[] {
   if (!GITHUB_OWNER) missing.push('GITHUB_OWNER');
   if (!GITHUB_REPO) missing.push('GITHUB_REPO');
   if (!WEBHOOK_SECRET) missing.push('WEBHOOK_SECRET');
-  if (!SITE_URL) missing.push('SITE_URL');
   return missing;
 }
