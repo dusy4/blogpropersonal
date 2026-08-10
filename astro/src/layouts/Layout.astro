@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { SITE_URL } from '../config';
 
 export interface Props {
   title?: string;
@@ -7,6 +8,7 @@ export interface Props {
 }
 
 const { title = 'Pro Personal Agency', description = 'Розумні AI-інтеграції для компаній, що хочуть бути на крок попереду.' } = Astro.props;
+const canonical = new URL(Astro.url.pathname, `${SITE_URL}/`).toString();
 ---
 
 <!DOCTYPE html>
@@ -15,6 +17,15 @@ const { title = 'Pro Personal Agency', description = 'Розумні AI-інте
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:locale" content="uk_UA" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
