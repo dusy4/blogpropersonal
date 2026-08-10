@@ -276,7 +276,6 @@ GITHUB_BRANCH=main
 WEBHOOK_SECRET=<random secret>
 SETUP_SECRET=<random setup secret>
 
-SITE_URL=https://blog.client.com
 TELEGRAM_CHANNEL_URL=https://t.me/public_channel
 DEFAULT_AUTHOR=Pro Personal Agency
 
@@ -287,6 +286,18 @@ SITE_DESCRIPTION=Практичні статті та кейси про AI-ін�
 ARTICLES_URL=/articles
 CASES_URL=/cases
 ```
+
+`SITE_URL` normally does **not** need to be configured on Vercel. The app resolves the production URL automatically in this order:
+
+```text
+SITE_URL (optional explicit override)
+-> VERCEL_PROJECT_PRODUCTION_URL
+-> VERCEL_URL
+```
+
+Vercel provides `VERCEL_PROJECT_PRODUCTION_URL` automatically at build and runtime. It follows the project's production domain, using a production custom domain when one is configured, otherwise a `vercel.app` production domain.
+
+Only set `SITE_URL` if you intentionally want to force one specific canonical domain, for example when the project has multiple production custom domains and you do not want Vercel's selected production domain.
 
 Do not set in production:
 
@@ -300,20 +311,20 @@ Redeploy after env changes.
 
 # 10. First webhook registration
 
-Після deploy і налаштованого `SITE_URL`:
+After the production deployment is ready, no manual site URL configuration is required on Vercel.
 
-1. Відкрийте:
+1. Відкрийте current production domain:
 
 ```text
-https://CURRENT_DOMAIN/api/setup
+https://CURRENT_PRODUCTION_DOMAIN/api/setup
 ```
 
 2. Введіть `SETUP_SECRET`.
 3. Натисніть **«Зареєструвати / перереєструвати webhook»**.
-4. Expected webhook URL:
+4. The backend derives the current production base URL from Vercel and registers:
 
 ```text
-https://CURRENT_DOMAIN/api/telegram
+https://RESOLVED_PRODUCTION_DOMAIN/api/telegram
 ```
 
 Registration робить:
@@ -327,7 +338,7 @@ Registration робить:
 
 Після цього натисніть **«Перевірити стан»** і перевірте:
 
-- webhook URL правильний;
+- webhook URL є доступним production endpoint;
 - немає `last_error_message`;
 - `channel_post` є в allowed updates.
 
@@ -337,19 +348,23 @@ Registration робить:
 
 # 11. Коли треба re-register webhook
 
-## Domain changed, bot same
+## Custom domain added/changed, same bot
 
-```text
-SITE_URL=https://NEW_DOMAIN
-```
+Vercel автоматично оновлює production-domain environment value для нових deployments. Після redeploy frontend canonical URLs, generated links, `llms.txt`, sitemap і bot-generated links можуть використовувати custom production domain без ручного `SITE_URL`.
 
-Потім:
+Telegram, однак, зберігає webhook URL, який був переданий під час останнього `setWebhook`. Він не переписується автоматично тільки через додавання custom domain.
 
-1. Redeploy.
-2. Open `https://NEW_DOMAIN/api/setup`.
-3. Register / re-register webhook.
-4. Check status.
-5. Test bot and source-channel publication.
+Якщо старий `*.vercel.app/api/telegram` endpoint усе ще доступний, webhook продовжує працювати і re-registration **не є функціонально обов'язковою**.
+
+Щоб Telegram також зберіг custom-domain endpoint:
+
+1. Add/verify custom domain in Vercel.
+2. Redeploy.
+3. Open `https://CUSTOM_DOMAIN/api/setup`.
+4. Register / re-register webhook.
+5. Check status and test bot/channel publication.
+
+Якщо старий webhook endpoint більше не доступний, re-registration уже обов'язкова.
 
 ## Bot/token changed, domain same
 
@@ -370,12 +385,14 @@ Old bot retains its own old webhook until it is explicitly deleted/changed using
 
 ## Domain and bot both changed
 
-1. Update `SITE_URL`.
+1. Configure/verify the new custom domain in Vercel.
 2. Update `TELEGRAM_BOT_TOKEN`.
 3. Redeploy.
 4. Open `https://NEW_DOMAIN/api/setup`.
 5. Register webhook.
 6. Test bot and channel publication.
+
+No `SITE_URL` change is normally required.
 
 ## WEBHOOK_SECRET changed
 
@@ -412,7 +429,7 @@ GITHUB_REPO
 GITHUB_BRANCH
 ```
 
-Reconnect Vercel Git integration to the same repo/branch if necessary, then redeploy and test publication. No Telegram webhook change is required unless bot/domain/webhook secret also changed.
+Reconnect Vercel Git integration to the same repo/branch if necessary, then redeploy and test publication. No Telegram webhook change is required unless bot/webhook secret/actual endpoint also changed.
 
 ## Anthropic key/model changed
 
@@ -486,7 +503,7 @@ TechArticle
 ## Bot does not answer
 
 - check `/api/setup` -> webhook status;
-- verify `SITE_URL`;
+- verify the stored webhook URL is still reachable;
 - check Telegram `last_error_message`;
 - ensure Deployment Protection does not block Telegram;
 - check `TELEGRAM_ALLOWED_USER_IDS`; `0` allows everyone.
@@ -537,7 +554,7 @@ Build-time `llms.txt` has deterministic fallback, so Anthropic outage should not
 - [ ] `TELEGRAM_ALLOWED_USER_IDS` configured
 - [ ] `TELEGRAM_SOURCE_CHANNEL_IDS` configured
 - [ ] public `TELEGRAM_CHANNEL_URL` configured
-- [ ] webhook status points to final domain
+- [ ] webhook status points to a reachable production endpoint
 - [ ] bot article test passed
 - [ ] source-channel test passed if feature used
 - [ ] case test passed
