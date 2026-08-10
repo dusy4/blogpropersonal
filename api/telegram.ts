@@ -1,6 +1,7 @@
 import {
   ADMIN_ID, ARTICLE_PATH, CASE_PATH, CMS, SITE_URL, WEBHOOK_SECRET,
-  isAllowed, missingRuntimeConfig,
+  TELEGRAM_ALLOW_ANY_USER, TELEGRAM_ALLOWED_USER_IDS, TELEGRAM_SOURCE_CHANNEL_IDS,
+  isAllowed, isSourceChannelAllowed, missingRuntimeConfig,
 } from './_lib/config';
 import { generateKeyTakeaways } from './_lib/anthropic';
 import { commitFile } from './_lib/github';
@@ -39,7 +40,7 @@ export default {
       else if (update.channel_post) await handleChannelPost(update.channel_post);
     } catch (error: any) {
       console.error('telegram webhook error', error);
-      const chatId = update.message?.chat?.id || update.channel_post?.chat?.id || update.callback_query?.message?.chat?.id;
+      const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
       if (chatId) {
         await sendMessage(chatId, `⚠️ Помилка: ${localizeError(error?.message || 'невідома помилка')}`, menu()).catch(() => {});
       }
@@ -63,7 +64,7 @@ async function handleMessage(message: any) {
   if (!isAllowed(fromId)) {
     return void (await sendMessage(
       chatId,
-      `⛔ Публікацію для цього акаунта вимкнено.\n\nВаш Telegram ID: ${fromId}\nДодайте його до ALLOWED_IDS у Vercel і зробіть повторний деплой.`,
+      `⛔ Публікацію для цього акаунта вимкнено.\n\nВаш Telegram ID: ${fromId}\nДодайте його до TELEGRAM_ALLOWED_USER_IDS у Vercel або встановіть TELEGRAM_ALLOWED_USER_IDS=0, щоб дозволити всім.`,
       menu(),
     ));
   }
@@ -281,33 +282,47 @@ async function sendCaseFieldPrompt(chatId: number, draftMessageId: number, field
 }
 
 async function handleChannelPost(message: any) {
-  const chatId = message.chat.id;
-  if (!isAllowed(chatId)) return;
+  const chatId = Number(message.chat?.id || 0);
+  if (!chatId || !isSourceChannelAllowed(chatId)) {
+    console.warn('Ignored channel_post from unconfigured channel', chatId || 'unknown');
+    return;
+  }
+
   const source = parseSubmission(message);
-  if (!source.title || !source.bodyText) return;
+  if (!source.title || !source.bodyText) {
+    console.warn('Ignored channel_post without title/body', chatId);
+    return;
+  }
 
   const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
   const post = toArticleMarkdown(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
   await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article from channel: ${post.slug}`);
-  await sendMessage(chatId, `✅ Статтю опубліковано: ${SITE_URL}/articles/${post.slug}`, { disable_web_page_preview: true });
+  console.info('Published article from Telegram channel', chatId, post.slug);
 }
 
 async function showHome(chatId: number, fromId: number) {
   const allowed = isAllowed(fromId);
   const intro = allowed
     ? 'ProPersonal CMS готова. Оберіть, що хочете опублікувати.'
-    : `ProPersonal CMS\n\nВаш Telegram ID: ${fromId}\nПублікація заблокована, доки цей ID не буде додано до ALLOWED_IDS у Vercel.`;
+    : `ProPersonal CMS\n\nВаш Telegram ID: ${fromId}\nПублікація заблокована, доки цей ID не буде додано до TELEGRAM_ALLOWED_USER_IDS у Vercel. Значення 0 дозволяє всім користувачам.`;
   await sendMessage(chatId, intro, menu());
 }
 
 async function showStatus(chatId: number, fromId: number) {
   if (fromId !== ADMIN_ID) return void (await sendMessage(chatId, `Ваш Telegram ID: ${fromId}`, menu()));
   const missing = missingRuntimeConfig();
+  const userAccess = TELEGRAM_ALLOW_ANY_USER
+    ? 'усі користувачі'
+    : `${TELEGRAM_ALLOWED_USER_IDS.length + (ADMIN_ID ? 1 : 0)} дозволених ID`;
+  const channelAccess = TELEGRAM_SOURCE_CHANNEL_IDS.length
+    ? TELEGRAM_SOURCE_CHANNEL_IDS.join(', ')
+    : 'не налаштовано';
+  const base = missing.length
+    ? `⚠️ У Vercel бракує змінних:\n${missing.join('\n')}`
+    : '✅ Основна конфігурація CMS заповнена.';
   await sendMessage(
     chatId,
-    missing.length
-      ? `⚠️ У Vercel бракує змінних:\n${missing.join('\n')}`
-      : '✅ Основна конфігурація CMS заповнена.',
+    `${base}\n\n👤 Доступ до бота: ${userAccess}\n📣 Канали-джерела: ${channelAccess}`,
     menu(),
   );
 }
