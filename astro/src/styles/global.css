@@ -7,7 +7,8 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-surface text-slate-900 antialiased;
+    background-color: #f8f8f4;
+    @apply text-slate-900 antialiased;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
