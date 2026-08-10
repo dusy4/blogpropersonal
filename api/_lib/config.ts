@@ -13,11 +13,24 @@ export const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
 export const SETUP_SECRET = process.env.SETUP_SECRET || '';
 
 export const ADMIN_ID = Number(process.env.ADMIN_ID || '0');
-export const ALLOWED_IDS = (process.env.ALLOWED_IDS || '')
+
+const allowedUsersRaw = (process.env.TELEGRAM_ALLOWED_USER_IDS ?? process.env.ALLOWED_IDS ?? '').trim();
+export const TELEGRAM_ALLOW_ANY_USER = allowedUsersRaw === '0';
+export const TELEGRAM_ALLOWED_USER_IDS = allowedUsersRaw === '0'
+  ? []
+  : allowedUsersRaw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map(Number)
+      .filter(Number.isFinite);
+
+export const TELEGRAM_SOURCE_CHANNEL_IDS = (process.env.TELEGRAM_SOURCE_CHANNEL_IDS || '')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean)
-  .map(Number);
+  .map(Number)
+  .filter(Number.isFinite);
 
 export const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
 export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'ProPersonal';
@@ -59,7 +72,13 @@ export const CMS = {
 } as const;
 
 export function isAllowed(id: number): boolean {
-  return (ADMIN_ID !== 0 && id === ADMIN_ID) || ALLOWED_IDS.includes(id);
+  if (ADMIN_ID !== 0 && id === ADMIN_ID) return true;
+  if (TELEGRAM_ALLOW_ANY_USER) return true;
+  return TELEGRAM_ALLOWED_USER_IDS.includes(id);
+}
+
+export function isSourceChannelAllowed(id: number): boolean {
+  return TELEGRAM_SOURCE_CHANNEL_IDS.includes(id);
 }
 
 export function missingRuntimeConfig(): string[] {
