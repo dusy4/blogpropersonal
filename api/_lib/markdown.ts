@@ -140,7 +140,8 @@ export function toArticleMarkdown(
   const publishedAt = new Date().toISOString();
   const date = publishedAt.slice(0, 10);
   const slug = slugify(title);
-  const markdownBody = bodyEntities.length ? applyEntities(bodyText, bodyEntities) : bodyText;
+  const rawMarkdownBody = bodyEntities.length ? applyEntities(bodyText, bodyEntities) : bodyText;
+  const markdownBody = normalizeHeadingSyntax(rawMarkdownBody);
   const content = `---\ntitle: "${yamlEscape(title)}"\nslug: "${slug}"\ndate: "${publishedAt}"\n${keyTakeaways ? `keyTakeaways: "${yamlEscape(keyTakeaways)}"\n` : ''}author: "${yamlEscape(DEFAULT_AUTHOR)}"\n---\n\n${markdownBody.trim()}\n`;
   return { date, slug, content };
 }
@@ -187,6 +188,12 @@ function extractManualKeyTakeaways(body: string) {
     bodyStart: match[0].length,
     body: body.slice(match[0].length).trimStart(),
   };
+}
+
+function normalizeHeadingSyntax(markdown: string) {
+  // Telegram users commonly type `##Heading` without the Markdown-required space.
+  // Normalize ATX headings so Astro renders the intended H1-H6 hierarchy.
+  return markdown.replace(/^(#{1,6})(?=\S)/gm, '$1 ');
 }
 
 function applyEntities(text: string, entities: Entity[]): string {
