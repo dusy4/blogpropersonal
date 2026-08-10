@@ -22,8 +22,21 @@ export const ALLOWED_IDS = (process.env.ALLOWED_IDS || '')
 export const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
 export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'Pro Personal Agency';
 
-export const ARTICLE_PATH = 'astro/src/content/articles';
-export const CASE_PATH = 'astro/src/content/cases';
+// Repository content locations. Change here only if the Astro structure changes.
+export const ARTICLE_PATH = process.env.ARTICLE_PATH || 'astro/src/content/articles';
+export const CASE_PATH = process.env.CASE_PATH || 'astro/src/content/cases';
+
+// Telegram CMS copy/configuration. Per-case external URLs are content and are
+// entered in Telegram as `URL: https://...`; they are not Vercel secrets.
+export const CMS = {
+  articleButton: '📝 New article',
+  caseButton: '💼 New case',
+  statusButton: '⚙️ Status',
+  idButton: '🆔 My ID',
+  helpButton: '❓ Help',
+  articlePrompt: '📝 NEW ARTICLE\n\nReply with:\n\nTitle\n\nArticle body\n\nOptional: put “Key Takeaways: …” as the first paragraph. If omitted, Claude generates it.',
+  casePrompt: '💼 NEW CASE\n\nReply with:\n\nCase title\n\nClient: Company name (optional)\nURL: https://external-source.example/case (optional)\nResult: measurable result (optional)\nDescription: short card description (optional)\n\nOptional longer case notes/body after the fields. If URL is supplied, the website card opens that external source.',
+} as const;
 
 export function isAllowed(id: number): boolean {
   return (ADMIN_ID !== 0 && id === ADMIN_ID) || ALLOWED_IDS.includes(id);
