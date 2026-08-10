@@ -12,6 +12,8 @@ export const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
 export const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
 export const SETUP_SECRET = process.env.SETUP_SECRET || '';
 
+// Опційний diagnostics owner. На доступ до публікації напряму не впливає,
+// крім backward-compatible дозволу цього ID, якщо він заданий.
 export const ADMIN_ID = Number(process.env.ADMIN_ID || '0');
 
 const allowedUsersRaw = (process.env.TELEGRAM_ALLOWED_USER_IDS ?? process.env.ALLOWED_IDS ?? '').trim();
@@ -27,8 +29,9 @@ export const TELEGRAM_ALLOWED_USER_IDS = allowedUsersRaw === '0'
 
 const sourceChannelsRaw = (process.env.TELEGRAM_SOURCE_CHANNEL_IDS || '').trim();
 export const TELEGRAM_ALLOW_ANY_SOURCE_CHANNEL = sourceChannelsRaw === '0';
+// Keep [0] visible to the existing status UI; isSourceChannelAllowed interprets it as wildcard.
 export const TELEGRAM_SOURCE_CHANNEL_IDS = sourceChannelsRaw === '0'
-  ? []
+  ? [0]
   : sourceChannelsRaw
       .split(',')
       .map((value) => value.trim())
