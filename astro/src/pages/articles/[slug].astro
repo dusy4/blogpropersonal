@@ -1,19 +1,31 @@
+export const prerender = true;
+
 ---
 import { getCollection, render } from 'astro:content';
 import ArticleLayout from '../../layouts/ArticleLayout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
 
 export async function getStaticPaths() {
-  const entries = await getCollection('articles');
-  return entries.map((entry) => ({
-    params: { slug: entry.data.slug || entry.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '') },
-    props: { entry },
-  }));
+  const posts = await getCollection('articles');
+  return posts.map((post) => {
+    const slug = post.data.slug || post.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+    return { params: { slug }, props: { post, slug } };
+  });
 }
 
-const { entry } = Astro.props;
-const { Content } = await render(entry);
-const slug = entry.data.slug || entry.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+const { post, slug } = Astro.props;
+const { Content } = await render(post);
 ---
-<ArticleLayout title={entry.data.title} slug={slug} date={entry.data.date} keyTakeaways={entry.data.keyTakeaways} author={entry.data.author} image={entry.data.image}>
+
+<ArticleLayout
+  title={post.data.title}
+  date={new Date(post.data.date)}
+  author={post.data.author}
+  keyTakeaways={post.data.keyTakeaways}
+  slug={slug}
+>
+  <Header slot="header" />
   <Content />
+  <Footer slot="footer" />
 </ArticleLayout>
