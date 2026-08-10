@@ -98,7 +98,9 @@ async function saveArticleFieldReply(message: any) {
   const chatId = message.chat.id;
   const prompt = message.reply_to_message?.text || '';
   const field = articleFieldFromPrompt(prompt);
-  const draftMessageId = Number(prompt.match(/Чернетка #(\d+)/)?.[1] || '0');
+  const draftRef = prompt.match(/Чернетка #(\d+)(?:\/(\d+))?/);
+  const draftMessageId = Number(draftRef?.[1] || '0');
+  const existingBodyMessageId = Number(draftRef?.[2] || '0');
   const markerIndex = prompt.indexOf(CMS.articleDraftMarker);
 
   if (!field || !draftMessageId || markerIndex < 0) {
@@ -121,21 +123,11 @@ async function saveArticleFieldReply(message: any) {
   if (field === 'body') {
     if (value === CMS.clearValue || !value) {
       draft.bodySet = false;
-      await editMessageText(chatId, draftMessageId, buildArticleDraftText(draft), {
-        reply_markup: articleDraftKeyboard(),
-        disable_web_page_preview: true,
-      });
-      return void (await sendMessage(chatId, `✅ Поле «${config.label}» очищено.`, menu()));
+      return void (await moveArticleDraftToBottom(chatId, draftMessageId, draft));
     }
 
     draft.bodySet = true;
-    await sendMessage(chatId, buildArticleDraftText(draft), {
-      reply_markup: articleDraftKeyboard(),
-      reply_parameters: { message_id: message.message_id },
-      disable_web_page_preview: true,
-    });
-    await editMessageText(chatId, draftMessageId, '↪️ Чернетку оновлено нижче.');
-    return void (await sendMessage(chatId, `✅ Поле «${config.label}» збережено.`, menu()));
+    return void (await moveArticleDraftToBottom(chatId, draftMessageId, draft, message.message_id));
   }
 
   if (value === CMS.clearValue) value = '';
@@ -143,16 +135,26 @@ async function saveArticleFieldReply(message: any) {
   if (field === 'title') draft.title = normalized;
   else draft.keyTakeaways = normalized;
 
-  await editMessageText(chatId, draftMessageId, buildArticleDraftText(draft), {
+  await moveArticleDraftToBottom(
+    chatId,
+    draftMessageId,
+    draft,
+    draft.bodySet ? existingBodyMessageId : 0,
+  );
+}
+
+async function moveArticleDraftToBottom(
+  chatId: number,
+  oldDraftMessageId: number,
+  draft: ArticleDraft,
+  bodyMessageId = 0,
+) {
+  await sendMessage(chatId, buildArticleDraftText(draft), {
     reply_markup: articleDraftKeyboard(),
+    ...(bodyMessageId ? { reply_parameters: { message_id: bodyMessageId } } : {}),
     disable_web_page_preview: true,
   });
-
-  await sendMessage(
-    chatId,
-    value ? `✅ Поле «${config.label}» збережено.` : `✅ Поле «${config.label}» очищено.`,
-    menu(),
-  );
+  await editMessageText(chatId, oldDraftMessageId, '↪️ Чернетку оновлено нижче.');
 }
 
 async function saveCaseFieldReply(message: any) {
@@ -215,8 +217,9 @@ async function handleCallback(callback: any) {
     if (!ARTICLE_FIELD_KEYS.includes(field)) return void (await answerCallbackQuery(callback.id));
 
     const draft = parseArticleDraftText(callback.message.text || '');
+    const bodyMessageId = Number(callback.message.reply_to_message?.message_id || 0);
     await answerCallbackQuery(callback.id, `Редагування: ${CMS.articleFields[field].label}`);
-    return void (await sendArticleFieldPrompt(chatId, messageId, field, draft));
+    return void (await sendArticleFieldPrompt(chatId, messageId, field, draft, bodyMessageId));
   }
 
   if (action.startsWith('case_edit:')) {
@@ -293,7 +296,13 @@ async function handleCallback(callback: any) {
   await answerCallbackQuery(callback.id);
 }
 
-async function sendArticleFieldPrompt(chatId: number, draftMessageId: number, field: ArticleFieldKey, draft: ArticleDraft) {
+async function sendArticleFieldPrompt(
+  chatId: number,
+  draftMessageId: number,
+  field: ArticleFieldKey,
+  draft: ArticleDraft,
+  bodyMessageId = 0,
+) {
   const config = CMS.articleFields[field];
   const current = field === 'body'
     ? (draft.bodySet ? '✅ додано' : CMS.clearValue)
@@ -310,7 +319,7 @@ async function sendArticleFieldPrompt(chatId: number, draftMessageId: number, fi
     `Поточне значення: ${current}`,
     instruction,
     '',
-    `Чернетка #${draftMessageId}`,
+    `Чернетка #${draftMessageId}${bodyMessageId ? `/${bodyMessageId}` : ''}`,
     CMS.articleDraftMarker,
     buildArticleDraftText(draft),
   ].join('\n');
