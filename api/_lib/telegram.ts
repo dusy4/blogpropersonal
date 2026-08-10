@@ -26,8 +26,32 @@ export const editMessageText = (
   extra: Record<string, unknown> = {},
 ) => call('editMessageText', { chat_id: chatId, message_id: messageId, text, ...extra });
 
-export const answerCallbackQuery = (id: string, text?: string, showAlert = false) =>
-  call('answerCallbackQuery', { callback_query_id: id, ...(text ? { text } : {}), show_alert: showAlert });
+export const editMessageReplyMarkup = (
+  chatId: number | string,
+  messageId: number,
+  replyMarkup: Record<string, unknown> = { inline_keyboard: [] },
+) => call('editMessageReplyMarkup', {
+  chat_id: chatId,
+  message_id: messageId,
+  reply_markup: replyMarkup,
+});
+
+export async function answerCallbackQuery(id: string, text?: string, showAlert = false) {
+  try {
+    return await call('answerCallbackQuery', {
+      callback_query_id: id,
+      ...(text ? { text } : {}),
+      show_alert: showAlert,
+    });
+  } catch (error: any) {
+    const message = error?.message || String(error);
+    if (/query is too old|query ID is invalid|response timeout expired/i.test(message)) {
+      console.warn('Ignored stale Telegram callback query');
+      return { ok: false, stale: true };
+    }
+    throw error;
+  }
+}
 
 export const setWebhook = (url: string, secret: string) =>
   call('setWebhook', {
