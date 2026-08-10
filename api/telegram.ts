@@ -5,9 +5,15 @@ import {
   isAllowed, isSourceChannelAllowed, missingRuntimeConfig,
 } from './_lib/config';
 import { generateKeyTakeaways } from './_lib/anthropic';
-import { commitFile, deleteFile, listMarkdownEntries, type ContentEntry } from './_lib/github';
+import {
+  commitFile, commitFiles, deleteFile, findArticleByTelegramSource,
+  listMarkdownEntries, type ContentEntry,
+} from './_lib/github';
 import { parseSubmission, toArticleMarkdown, toCaseMarkdown } from './_lib/markdown';
-import { answerCallbackQuery, editMessageReplyMarkup, editMessageText, sendMessage } from './_lib/telegram';
+import {
+  answerCallbackQuery, downloadTelegramFile, editMessageReplyMarkup,
+  editMessageText, sendMessage,
+} from './_lib/telegram';
 
 type ArticleFieldKey = 'title' | 'keyTakeaways' | 'body';
 type ArticleDraft = { title: string; keyTakeaways: string; bodySet: boolean };
@@ -43,7 +49,8 @@ export default {
     try {
       if (update.callback_query) await handleCallback(update.callback_query);
       else if (update.message) await handleMessage(update.message);
-      else if (update.channel_post) await handleChannelPost(update.channel_post);
+      else if (update.edited_channel_post) await handleChannelPost(update.edited_channel_post, true);
+      else if (update.channel_post) await handleChannelPost(update.channel_post, false);
     } catch (error: any) {
       console.error('telegram webhook error', error);
       const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
@@ -269,8 +276,7 @@ async function handleCallback(callback: any) {
       return void (await sendMessage(chatId, '✅ Vercel deployment завершено, production уже оновлений.', menu()));
     }
 
-    await editMessageText(chatId, messageId, `⏳ ${kind === 'article' ? 'Статтю' : 'Кейс'} видалено з GitHub, але live deployment ще не підтверджено.`);
-    return void (await sendMessage(chatId, 'Vercel не встиг підтвердитися в межах очікування функції. GitHub-зміна вже збережена.', menu()));
+    return;
   }
 
   if (action === 'cancel') {
@@ -330,11 +336,7 @@ async function handleCallback(callback: any) {
       return void (await sendMessage(chatId, `✅ Стаття вже live.\n\n🔗 ${liveUrl}`, menu()));
     }
 
-    return void (await sendMessage(
-      chatId,
-      `Vercel не встиг підтвердитися в межах очікування функції.\n\n🔗 ${liveUrl}`,
-      menu(),
-    ));
+    return;
   }
 
   if (action === 'publish_case') {
@@ -367,7 +369,7 @@ async function handleCallback(callback: any) {
       return void (await sendMessage(chatId, `✅ Кейс уже live.\n\n🔗 ${liveUrl}${external}`, menu()));
     }
 
-    return void (await sendMessage(chatId, `Vercel не встиг підтвердитися в межах очікування функції.\n\n🔗 ${liveUrl}${external}`, menu()));
+    return;
   }
 
   await answerCallbackQuery(callback.id);
@@ -463,23 +465,61 @@ async function sendCaseFieldPrompt(chatId: number, draftMessageId: number, field
   });
 }
 
-async function handleChannelPost(message: any) {
+async function handleChannelPost(message: any, edited = false) {
   const chatId = Number(message.chat?.id || 0);
-  if (!chatId || !isSourceChannelAllowed(chatId)) {
-    console.warn('Ignored channel_post from unconfigured channel', chatId || 'unknown');
+  const messageId = Number(message.message_id || 0);
+  if (!chatId || !messageId || !isSourceChannelAllowed(chatId)) {
+    console.warn('Ignored channel post from unconfigured channel', chatId || 'unknown');
     return;
   }
 
   const source = parseSubmission(message);
-  if (!source.title || !source.bodyText) {
-    console.warn('Ignored channel_post without title/body', chatId);
+  if (!source.title || !source.keyTakeaways || !source.bodyText) {
+    console.warn('Ignored channel post without title/takeaways/body', chatId, messageId);
     return;
   }
 
-  const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
-  const post = toArticleMarkdown(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
-  await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article from channel: ${post.slug}`);
-  console.info('Published article from Telegram channel', chatId, post.slug);
+  const existing = await findArticleByTelegramSource(ARTICLE_PATH, chatId, messageId);
+  if (edited && !existing) {
+    console.warn('Ignored edited channel post without tracked article', chatId, messageId);
+    return;
+  }
+
+  const photo = Array.isArray(message.photo) && message.photo.length
+    ? message.photo[message.photo.length - 1]
+    : null;
+  const publicImagePath = photo ? `/uploads/tg-${Math.abs(chatId)}-${messageId}.jpg` : '';
+  const post = toArticleMarkdown(
+    source.title,
+    source.keyTakeaways,
+    source.bodyText,
+    source.bodyEntities,
+    {
+      slug: existing?.slug,
+      publishedAt: existing?.date,
+      image: publicImagePath,
+      sourceChannelId: chatId,
+      sourceMessageId: messageId,
+    },
+  );
+
+  const articlePath = existing?.path || `${ARTICLE_PATH}/${post.date}-${post.slug}.md`;
+  const changes: Array<{ path: string; content?: string; bytes?: Uint8Array; delete?: boolean }> = [
+    { path: articlePath, content: post.content },
+  ];
+
+  if (photo?.file_id) {
+    const downloaded = await downloadTelegramFile(photo.file_id);
+    changes.push({ path: `astro/public${publicImagePath}`, bytes: downloaded.bytes });
+  } else if (existing?.image?.startsWith('/uploads/')) {
+    changes.push({ path: `astro/public${existing.image}`, delete: true });
+  }
+
+  await commitFiles(
+    changes,
+    `${edited || existing ? 'update' : 'publish'} article from channel: ${post.slug}`,
+  );
+  console.info(edited || existing ? 'Updated article from Telegram channel' : 'Published article from Telegram channel', chatId, messageId, post.slug);
 }
 
 async function showHome(chatId: number, fromId: number) {
@@ -734,6 +774,7 @@ function localizeError(message: string) {
 const HELP =
   '<b>Публікація контенту</b>\n\n' +
   `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Заповніть кнопками «Заголовок», «Ключові висновки» та «Текст».\n3. Для H2/H3 у тексті використовуйте ## та ###.\n4. Натисніть <b>${CMS.publishArticle}</b>. Бот підтвердить успіх лише після того, як production стане live.\n\n` +
+  '<b>Канал CMS</b>\n1-й абзац = H1/заголовок. 2-й абзац = Key Takeaways. 3-й і далі = звичайний текст; ## = H2, ### = H3. Редагування channel post перебудовує ту саму статтю.\n\n' +
   '<b>Кейс</b>\n1. Натисніть <b>💼 Новий кейс</b>.\n2. Заповніть потрібні поля кнопками.\n3. Натисніть <b>✅ Опублікувати кейс</b>.\n\n' +
-  `<b>Видалення</b>\nНатисніть <b>${DELETE_ARTICLE_BUTTON}</b> або <b>${DELETE_CASE_BUTTON}</b>, оберіть запис і підтвердьте видалення. Бот чекатиме, доки зміни реально з’являться на production.\n\n` +
+  `<b>Видалення</b>\nНатисніть <b>${DELETE_ARTICLE_BUTTON}</b> або <b>${DELETE_CASE_BUTTON}</b>, оберіть запис і підтвердьте видалення.\n\n` +
   'Якщо у кейсу задано «Посилання», його картка на сайті відкриватиме зовнішнє джерело.';
