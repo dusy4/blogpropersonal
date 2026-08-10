@@ -25,12 +25,16 @@ export const TELEGRAM_ALLOWED_USER_IDS = allowedUsersRaw === '0'
       .map(Number)
       .filter(Number.isFinite);
 
-export const TELEGRAM_SOURCE_CHANNEL_IDS = (process.env.TELEGRAM_SOURCE_CHANNEL_IDS || '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean)
-  .map(Number)
-  .filter(Number.isFinite);
+const sourceChannelsRaw = (process.env.TELEGRAM_SOURCE_CHANNEL_IDS || '').trim();
+export const TELEGRAM_ALLOW_ANY_SOURCE_CHANNEL = sourceChannelsRaw === '0';
+export const TELEGRAM_SOURCE_CHANNEL_IDS = sourceChannelsRaw === '0'
+  ? []
+  : sourceChannelsRaw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map(Number)
+      .filter(Number.isFinite);
 
 export const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
 export const DEFAULT_AUTHOR = process.env.DEFAULT_AUTHOR || 'ProPersonal';
@@ -78,6 +82,7 @@ export function isAllowed(id: number): boolean {
 }
 
 export function isSourceChannelAllowed(id: number): boolean {
+  if (TELEGRAM_ALLOW_ANY_SOURCE_CHANNEL) return true;
   return TELEGRAM_SOURCE_CHANNEL_IDS.includes(id);
 }
 
