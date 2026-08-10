@@ -137,10 +137,11 @@ export function toArticleMarkdown(
   bodyText: string,
   bodyEntities: Entity[],
 ) {
-  const date = today();
+  const publishedAt = new Date().toISOString();
+  const date = publishedAt.slice(0, 10);
   const slug = slugify(title);
   const markdownBody = bodyEntities.length ? applyEntities(bodyText, bodyEntities) : bodyText;
-  const content = `---\ntitle: "${yamlEscape(title)}"\nslug: "${slug}"\ndate: "${date}"\n${keyTakeaways ? `keyTakeaways: "${yamlEscape(keyTakeaways)}"\n` : ''}author: "${yamlEscape(DEFAULT_AUTHOR)}"\n---\n\n${markdownBody.trim()}\n`;
+  const content = `---\ntitle: "${yamlEscape(title)}"\nslug: "${slug}"\ndate: "${publishedAt}"\n${keyTakeaways ? `keyTakeaways: "${yamlEscape(keyTakeaways)}"\n` : ''}author: "${yamlEscape(DEFAULT_AUTHOR)}"\n---\n\n${markdownBody.trim()}\n`;
   return { date, slug, content };
 }
 
