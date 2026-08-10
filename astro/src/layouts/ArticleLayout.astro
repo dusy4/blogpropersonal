@@ -45,19 +45,33 @@ const jsonLd = {
 
       {image && <img class="article-cover" src={image} alt={title} loading="eager" decoding="async" />}
 
-      <div class="key-takeaways">
-        <h2>Ключові висновки</h2>
+      <aside class="key-takeaways" aria-labelledby="key-takeaways-title">
+        <h2 id="key-takeaways-title">Ключові висновки</h2>
         <p>{keyTakeaways}</p>
-      </div>
+      </aside>
 
       <slot />
     </article>
 
-    <div class="article-telegram rounded-2xl bg-brand p-8 text-white">
-      <h3 class="m-0 text-xl font-semibold">Приєднуйтесь до нашого Telegram-каналу</h3>
-      <p class="mt-2 text-slate-100">Отримуйте новини про AI-інтеграції, кейси та практичні інсайти.</p>
-      <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="btn-primary mt-4">Перейти в Telegram →</a>
-    </div>
+    <aside class="article-telegram" aria-label="Telegram">
+      <div class="telegram-copy">
+        <div class="telegram-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z" /></svg>
+        </div>
+        <h3>Приєднуйтесь до нашого <span>Telegram</span>-каналу</h3>
+        <p>Отримуйте новини про AI-інтеграції, кейси та практичні інсайти.</p>
+        <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="telegram-cta-button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z" /></svg>
+          <span>Перейти в Telegram</span>
+          <b aria-hidden="true">→</b>
+        </a>
+      </div>
+      <div class="telegram-visual" aria-hidden="true">
+        <div class="telegram-orb">
+          <svg viewBox="0 0 24 24"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z" /></svg>
+        </div>
+      </div>
+    </aside>
 
     <div class="article-share"><Share url={url} title={title} /></div>
   </section>
