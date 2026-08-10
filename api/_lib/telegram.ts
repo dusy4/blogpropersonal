@@ -1,6 +1,7 @@
 import { TELEGRAM_BOT_TOKEN } from './config';
 
 const api = () => `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const fileApi = (path: string) => `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${path}`;
 
 async function call(method: string, body: Record<string, unknown> = {}) {
   if (!TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not configured.');
@@ -58,11 +59,23 @@ export async function answerCallbackQuery(id: string, text?: string, showAlert =
   }
 }
 
+export async function downloadTelegramFile(fileId: string) {
+  const file = await call('getFile', { file_id: fileId });
+  const path = file?.result?.file_path as string | undefined;
+  if (!path) throw new Error('Telegram getFile did not return file_path.');
+  const response = await fetch(fileApi(path));
+  if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    filePath: path,
+  };
+}
+
 export const setWebhook = (url: string, secret: string) =>
   call('setWebhook', {
     url,
     secret_token: secret,
-    allowed_updates: ['message', 'callback_query', 'channel_post'],
+    allowed_updates: ['message', 'callback_query', 'channel_post', 'edited_channel_post'],
     drop_pending_updates: false,
   });
 
