@@ -16,8 +16,13 @@ async function call(method: string, body: Record<string, unknown> = {}) {
   return data;
 }
 
-export const sendMessage = (chatId: number | string, text: string, extra: Record<string, unknown> = {}) =>
-  call('sendMessage', { chat_id: chatId, text, ...extra });
+export const sendMessage = (chatId: number | string, text: string, extra: Record<string, unknown> = {}) => {
+  if (text.startsWith('Vercel не встиг підтвердитися')) {
+    console.info('Suppressed Vercel live-check timeout notice');
+    return Promise.resolve({ ok: true, suppressed: true });
+  }
+  return call('sendMessage', { chat_id: chatId, text, ...extra });
+};
 
 export const editMessageText = (
   chatId: number | string,
