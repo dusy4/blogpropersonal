@@ -1,8 +1,9 @@
 import { defineConfig } from 'astro/config';
 
-const site = process.env.SITE_URL || 'https://example.com';
+const rawSite = process.env.SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || 'https://example.com';
+const site = /^https?:\/\//i.test(rawSite) ? rawSite : `https://${rawSite}`;
 
 export default defineConfig({
-  site,
+  site: site.replace(/\/$/, ''),
   output: 'static',
 });
