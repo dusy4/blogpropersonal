@@ -1,19 +1,25 @@
 ---
-import { TELEGRAM_CHANNEL_URL } from '../config';
+import {
+  BLOG_SUBTITLE,
+  SITE_MARK,
+  SITE_NAME,
+  TELEGRAM_CHANNEL_URL,
+  UI,
+} from '../config';
 ---
 
 <header class="site-header">
   <div class="site-header__inner">
-    <a href="/" class="brand-lockup" aria-label="ProPersonal — головна">
-      <span class="brand-mark">PP</span>
-      <span class="brand-name">ProPersonal</span>
+    <a href="/" class="brand-lockup" aria-label={`${SITE_NAME} — головна`}>
+      <span class="brand-mark">{SITE_MARK}</span>
+      <span class="brand-name">{SITE_NAME}</span>
       <span class="brand-divider" aria-hidden="true"></span>
-      <span class="brand-subtitle">Блог про AI-інтеграції та автоматизацію</span>
+      <span class="brand-subtitle">{BLOG_SUBTITLE}</span>
     </a>
 
     <nav class="site-nav" aria-label="Основна навігація">
-      <a class="site-nav__text" href="/#articles">Статті</a>
-      <a class="site-nav__text" href="/#cases">Кейси</a>
+      <a class="site-nav__text" href="/#articles">{UI.navArticles}</a>
+      <a class="site-nav__text" href="/#cases">{UI.navCases}</a>
       <a class="telegram-link" href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z"></path></svg>
         Telegram
@@ -23,127 +29,62 @@ import { TELEGRAM_CHANNEL_URL } from '../config';
 </header>
 
 <style>
-  .site-header {
-    background: #f8f8f4;
-  }
-
+  .site-header { background: #fafaf7; }
   .site-header__inner {
     width: min(1120px, calc(100% - 40px));
-    min-height: 76px;
+    min-height: 74px;
     margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 28px;
   }
-
-  .brand-lockup {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    color: #153a38;
-  }
-
-  .brand-lockup:hover { color: #153a38; }
-
+  .brand-lockup { display: flex; align-items: center; gap: 12px; min-width: 0; color: #153b38; }
+  .brand-lockup:hover { color: #153b38; }
   .brand-mark {
     display: grid;
     place-items: center;
-    width: 42px;
-    height: 42px;
+    width: 41px;
+    height: 41px;
     flex: 0 0 auto;
     border-radius: 8px;
-    background: #0c4d48;
-    color: #fff;
-    font-size: 18px;
-    font-weight: 800;
+    background: #0f4c4d;
+    color: white;
+    font-weight: 700;
     letter-spacing: -.03em;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
   }
-
-  .brand-name {
-    margin-left: 13px;
-    color: #143a38;
-    font-size: 20px;
-    font-weight: 750;
-    letter-spacing: -.025em;
-  }
-
-  .brand-divider {
-    width: 1px;
-    height: 22px;
-    margin: 0 13px;
-    background: #d8ddd8;
-  }
-
-  .brand-subtitle {
-    overflow: hidden;
-    max-width: 320px;
-    color: #7d8581;
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .site-nav {
-    display: flex;
-    align-items: center;
-    gap: 34px;
-    flex: 0 0 auto;
-  }
-
-  .site-nav__text {
-    color: #283533;
-    font-size: 13px;
-    font-weight: 650;
-  }
-
+  .brand-name { font-size: 20px; font-weight: 700; letter-spacing: -.025em; white-space: nowrap; }
+  .brand-divider { width: 1px; height: 21px; flex: 0 0 auto; background: #d5d9d2; }
+  .brand-subtitle { color: #7d8581; font-size: 12px; white-space: nowrap; }
+  .site-nav { display: flex; align-items: center; gap: 31px; flex: 0 0 auto; }
+  .site-nav__text { color: #313a38; font-size: 13px; font-weight: 600; }
   .site-nav__text:hover { color: #0f4c4d; }
-
   .telegram-link {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 7px;
-    min-height: 40px;
-    padding: 0 16px;
-    border-radius: 9px;
+    gap: 8px;
+    min-height: 39px;
+    padding: 0 17px;
+    border-radius: 8px;
     background: #f58634;
-    color: #fff;
+    color: white;
     font-size: 13px;
     font-weight: 700;
-    box-shadow: 0 3px 10px rgba(245,134,52,.17);
+    box-shadow: 0 2px 8px rgba(245,134,52,.18);
   }
-
-  .telegram-link:hover {
-    background: #df7328;
-    color: #fff;
+  .telegram-link:hover { background: #d96e22; color: white; }
+  .telegram-link svg { width: 16px; height: 16px; fill: currentColor; }
+  @media (max-width: 820px) {
+    .brand-subtitle, .brand-divider { display: none; }
+    .site-header__inner { width: min(100% - 28px,1120px); }
   }
-
-  .telegram-link svg {
-    width: 17px;
-    height: 17px;
-    fill: currentColor;
-  }
-
-  @media (max-width: 900px) {
-    .site-header__inner { width: min(100% - 32px, 1120px); }
-    .brand-subtitle,
-    .brand-divider { display: none; }
-    .site-nav { gap: 22px; }
-  }
-
-  @media (max-width: 620px) {
-    .site-header__inner {
-      width: min(100% - 24px, 1120px);
-      min-height: 68px;
-      gap: 14px;
-    }
-    .brand-mark { width: 38px; height: 38px; font-size: 16px; }
-    .brand-name { margin-left: 9px; font-size: 17px; }
+  @media (max-width: 560px) {
+    .site-header__inner { min-height: 68px; gap: 12px; width: min(100% - 22px,1120px); }
+    .brand-lockup { gap: 9px; }
+    .brand-mark { width: 36px; height: 36px; font-size: 14px; }
+    .brand-name { font-size: 17px; }
     .site-nav { gap: 12px; }
     .site-nav__text { display: none; }
-    .telegram-link { min-height: 38px; padding: 0 13px; }
+    .telegram-link { min-height: 36px; padding: 0 13px; font-size: 12px; }
   }
 </style>
