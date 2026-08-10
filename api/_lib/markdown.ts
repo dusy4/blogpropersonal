@@ -23,16 +23,23 @@ const SENDABLE = new Set([
 export function parseSubmission(message: TelegramMessage) {
   const raw = message.text ?? message.caption ?? '';
   const entities = (message.entities ?? message.caption_entities ?? []) as Entity[];
-  const { title, bodyStart } = splitTitleAndBody(raw);
+
+  // Accept manual takeaways either before the title or as the first block after the title.
+  const leadingManual = extractManualKeyTakeaways(raw);
+  const contentStart = leadingManual?.bodyStart || 0;
+  const content = raw.slice(contentStart);
+  const { title, bodyStart: relativeBodyStart } = splitTitleAndBody(content);
+  const bodyStart = contentStart + relativeBodyStart;
+
   let bodyText = raw.slice(bodyStart).trimEnd();
   let bodyEntities = entities
     .filter((entity) => entity.offset >= bodyStart && SENDABLE.has(entity.type))
     .map((entity) => ({ ...entity, offset: entity.offset - bodyStart }));
 
-  const manual = extractManualKeyTakeaways(bodyText);
-  if (manual) {
-    const removed = manual.bodyStart;
-    bodyText = manual.body;
+  const inlineManual = leadingManual ? null : extractManualKeyTakeaways(bodyText);
+  if (inlineManual) {
+    const removed = inlineManual.bodyStart;
+    bodyText = inlineManual.body;
     bodyEntities = bodyEntities
       .filter((entity) => entity.offset >= removed)
       .map((entity) => ({ ...entity, offset: entity.offset - removed }));
@@ -42,7 +49,7 @@ export function parseSubmission(message: TelegramMessage) {
     title: stripInlineMarkdown(title),
     bodyText,
     bodyEntities,
-    keyTakeaways: manual?.keyTakeaways || '',
+    keyTakeaways: leadingManual?.keyTakeaways || inlineManual?.keyTakeaways || '',
   };
 }
 
@@ -172,7 +179,7 @@ function splitTitleAndBody(text: string) {
 }
 
 function extractManualKeyTakeaways(body: string) {
-  const match = body.match(/^\s*(?:Key Takeaways|KT|Ключові висновки)\s*:\s*([\s\S]*?)(?:\n\s*\n|$)/i);
+  const match = body.match(/^\s*(?:Key Takeaways|KT|Ключові висновки|Ключі висновки)\s*:\s*([\s\S]*?)(?:\n\s*\n|$)/i);
   if (!match) return null;
   return {
     keyTakeaways: match[1].replace(/\s+/g, ' ').trim().slice(0, 1000),
