@@ -1,6 +1,6 @@
 # ProPersonal Blog
 
-Astro static blog + Telegram CMS + GitHub Markdown + Vercel Functions + Anthropic Claude.
+Astro static blog + Telegram CMS + GitHub Markdown + Vercel Functions + optional Anthropic Claude.
 
 Homepage contains only the editorial product:
 
@@ -32,10 +32,10 @@ No landing-page services/stats/testimonials and no visible `llms.txt` promotion.
 ## Architecture
 
 ```text
-Telegram
+Telegram bot / source channel
 -> Vercel /api/telegram
--> optional Claude Key Takeaways for bot-form articles only
--> GitHub Markdown commit
+-> manual Key Takeaways or optional Claude fallback
+-> GitHub Markdown/assets commit
 -> Vercel Git deployment
 -> Astro static site + llms files
 ```
@@ -56,16 +56,16 @@ The Telegram-native Start button technically sends `/start`; users do not need t
 
 ### Access
 
-There are only two access variables:
+There are two explicit access variables:
 
 ```text
 TELEGRAM_ALLOWED_USER_IDS=0
 TELEGRAM_SOURCE_CHANNEL_IDS=0
 ```
 
-`TELEGRAM_ALLOWED_USER_IDS=0` means any Telegram user may use the bot CMS. Otherwise use comma-separated user IDs.
+`TELEGRAM_ALLOWED_USER_IDS=0` means any Telegram user may use the private bot CMS. Otherwise use comma-separated user IDs. Empty means nobody can publish through the private bot CMS.
 
-`TELEGRAM_SOURCE_CHANNEL_IDS=0` means any channel where the bot receives channel updates may auto-publish. Otherwise use comma-separated channel IDs such as `-1001234567890`.
+`TELEGRAM_SOURCE_CHANNEL_IDS=0` means any channel whose updates reach this bot may auto-publish. Otherwise use comma-separated channel IDs such as `-1001234567890`. Empty disables channel auto-publishing.
 
 `ADMIN_ID` is not used.
 
@@ -81,7 +81,7 @@ Press `📝 Нова стаття`. The bot creates one editable article draft w
 ❌ Скасувати
 ```
 
-`Заголовок` and `Текст` are required. `Ключові висновки` are optional in the bot form: if omitted, the Telegram runtime uses Anthropic Claude to generate them. If they are supplied manually, Claude is not called.
+`Заголовок` and `Текст` are required. `Ключові висновки` are optional in the bot form: if supplied manually, Claude is not called; if omitted, the runtime attempts to generate them with Anthropic Claude.
 
 Inside the article body:
 
@@ -90,7 +90,11 @@ Inside the article body:
 ### H3
 ```
 
-The article H1 comes from the `Заголовок` field.
+`##Heading` is normalized to `## Heading`. The article H1 always comes from the `Заголовок` field.
+
+After any article field is saved, the bot sends a fresh updated draft anchor at the bottom of the chat. The old anchor becomes `↪️ Чернетку оновлено нижче.`
+
+When Publish is pressed, the draft anchor text remains visible but its edit/publish/cancel buttons are locked/removed so the same draft cannot be submitted again during deployment. The bot sends a progress message and only sends a success/live link after the production page is actually confirmed. If the serverless live-check window expires, the bot does not send a misleading timeout-success notice.
 
 Published articles are committed to:
 
@@ -98,16 +102,36 @@ Published articles are committed to:
 astro/src/content/articles/YYYY-MM-DD-slug.md
 ```
 
+Article `date` is an ISO publication timestamp, so multiple articles published on the same day still sort correctly and the homepage `Latest article` is truly the newest publication.
+
 ## Publishing from a Telegram channel
 
-Add the bot to the source channel. Channel CMS uses a fixed paragraph contract and does **not** use Claude:
+Add the bot to the source channel and allow that channel with `TELEGRAM_SOURCE_CHANNEL_IDS`.
+
+Channel CMS format is intentionally lightweight. A paragraph beginning with the canonical label:
 
 ```text
+Ключові висновки: <summary inside this same paragraph>
+```
+
+may appear **anywhere** in the Telegram post: before the title, after the title, in the middle, or at the end. The paragraph ends at the first blank-line paragraph break. The parser removes that tagged paragraph before interpreting article structure.
+
+After removal:
+
+- the first remaining paragraph = article title / H1;
+- everything after the title = article body;
+- `##` = H2;
+- `###` = H3;
+- `##Heading` is normalized to valid Markdown `## Heading`.
+
+Example with manual Key Takeaways first:
+
+```text
+Ключові висновки: Короткий answer-first summary. Друге речення. Третє речення.
+
 Заголовок статті
 
-Ключові висновки вручну
-
-Звичайний абзац статті.
+Звичайний абзац.
 
 ## H2
 Текст під H2.
@@ -116,18 +140,26 @@ Add the bot to the source channel. Channel CMS uses a fixed paragraph contract a
 Текст під H3.
 ```
 
-Rules:
+Example with manual Key Takeaways last:
 
-- paragraph 1 = article title / H1;
-- paragraph 2 = manual Key Takeaways;
-- paragraph 3 onward = normal article body;
-- `##` = H2 and `###` = H3;
-- `##Heading` is normalized to valid Markdown `## Heading`;
-- if title, the second Key Takeaways paragraph, or body is missing, the channel post is not published;
-- a channel post photo is stored with the article and rendered as its cover image;
-- `edited_channel_post` rebuilds the tracked article, including caption/text and photo changes, while preserving its slug/publication identity.
+```text
+Заголовок статті
 
-Telegram Bot API exposes `channel_post` and `edited_channel_post`, but no ordinary `deleted_channel_post` update. Therefore deleting a source post in the Telegram channel cannot automatically delete the article through the Bot API webhook; use `🗑 Видалити статтю` in the bot CMS for deletion.
+Звичайний абзац.
+
+## H2
+Текст під H2.
+
+Ключові висновки: Короткий answer-first summary. Друге речення. Третє речення.
+```
+
+If no `Ключові висновки:` paragraph exists, the runtime attempts to generate Key Takeaways with Claude from the article body. If Claude generation is required, `ANTHROPIC_API_KEY` must be configured.
+
+A channel post photo is downloaded through the Telegram Bot API, committed under the site's public assets, stored in article frontmatter, and rendered as the article cover image.
+
+`edited_channel_post` rebuilds the tracked article using the same Telegram `channel_id + message_id`. Text/caption, manual/Claude Key Takeaways, headings, and photo changes are reprocessed while preserving the article's slug/publication identity when an existing tracked article is found. An edit can also publish a previously untracked post if the earlier publication failed before the article was created.
+
+Telegram Bot API exposes `channel_post` and `edited_channel_post`, but not a normal `deleted_channel_post` webhook update. Therefore deleting the source message inside the Telegram channel cannot automatically delete the website article with this Bot API architecture. Use `🗑 Видалити статтю` in the bot CMS.
 
 For allowlist mode, an unknown channel ID can be discovered from Vercel Runtime Logs after a rejected test post:
 
@@ -162,15 +194,26 @@ Publication requires:
 at least one of: Опис / Посилання / Нотатки
 ```
 
-`Клієнт` and `Результат` are optional.
-
-If `Посилання` is present, the case card opens that external source. Otherwise the case remains an on-page card.
+`Клієнт` and `Результат` are optional. If `Посилання` is present, the case card opens that external source. Otherwise the case remains an on-page card.
 
 Published cases are committed to:
 
 ```text
 astro/src/content/cases/YYYY-MM-DD-slug.md
 ```
+
+Case publication also waits for a production check before sending the final live confirmation.
+
+## Deleting articles and cases
+
+Use:
+
+```text
+🗑 Видалити статтю
+🗑 Видалити кейс
+```
+
+The bot lists existing Markdown entries, asks for a separate confirmation, deletes the selected GitHub content, and waits for production to reflect the deletion. A final success message is only sent when the site change is actually confirmed live.
 
 ## Article reader
 
@@ -211,7 +254,7 @@ SITE_URL override
 -> VERCEL_URL
 ```
 
-This is used for canonical URLs, sitemap/AI files, Telegram result links and webhook registration.
+This is used for canonical URLs, sitemap/AI files, Telegram result links, production live checks and webhook registration.
 
 `SITE_URL` exists only as an optional override for a deliberately chosen canonical domain or non-Vercel deployment.
 
@@ -221,18 +264,23 @@ Secrets/runtime:
 
 ```text
 TELEGRAM_BOT_TOKEN
-ANTHROPIC_API_KEY
 GITHUB_TOKEN
 WEBHOOK_SECRET
 SETUP_SECRET
 ```
 
-`ANTHROPIC_API_KEY` is only required when bot-form article Key Takeaways must be generated automatically. It is not required for channel CMS because channel paragraph 2 supplies Key Takeaways manually.
+Anthropic is optional only while every publication path supplies manual Key Takeaways and build-time fallback is acceptable:
+
+```text
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-5
+```
+
+`ANTHROPIC_API_KEY` is required whenever bot-form or channel publication needs automatic Key Takeaways.
 
 Publishing/config:
 
 ```text
-ANTHROPIC_MODEL=claude-sonnet-5
 GITHUB_OWNER=<owner>
 GITHUB_REPO=blogpropersonal
 GITHUB_BRANCH=main
@@ -279,12 +327,21 @@ A valid request automatically resolves the current Vercel production domain and 
 https://PRODUCTION_DOMAIN/api/telegram
 ```
 
-with `message`, `callback_query`, `channel_post`, and `edited_channel_post` updates plus `WEBHOOK_SECRET` as Telegram's `secret_token`. It also removes registered slash commands, resets the Telegram menu button and returns `getWebhookInfo` for verification.
+with:
+
+```text
+message
+callback_query
+channel_post
+edited_channel_post
+```
+
+and `WEBHOOK_SECRET` as Telegram's `secret_token`. It also removes registered slash commands, resets the Telegram menu button, preserves pending updates, and returns `getWebhookInfo` for verification.
 
 The setup response uses `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. Treat the full setup URL as a secret because the query token may remain in browser history or infrastructure request logs.
 
-Re-run the setup URL after changing `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET`, or after deploying a change to the webhook `allowed_updates` list. Access-list changes need only a redeploy.
+Re-run the setup URL after changing `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET`, or after deploying a change to the webhook `allowed_updates` list. In particular, an existing webhook registered before `edited_channel_post` support was added must be re-registered once. Access-list changes need only a redeploy.
 
-Adding a custom Vercel domain does not break an existing `*.vercel.app` webhook. Re-run the setup URL only if you want Telegram's stored webhook URL to use the custom domain itself.
+Adding a custom Vercel domain does not break an existing `*.vercel.app` webhook while that alias remains reachable. Re-run the setup URL only if you want Telegram's stored webhook URL to use the custom domain itself.
 
 For the complete transfer/runbook, see `HANDOFF.md`.
