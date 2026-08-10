@@ -474,16 +474,13 @@ async function handleChannelPost(message: any, edited = false) {
   }
 
   const source = parseSubmission(message);
-  if (!source.title || !source.keyTakeaways || !source.bodyText) {
-    console.warn('Ignored channel post without title/takeaways/body', chatId, messageId);
+  if (!source.title || !source.bodyText) {
+    console.warn('Ignored channel post without title/body', chatId, messageId);
     return;
   }
 
   const existing = await findArticleByTelegramSource(ARTICLE_PATH, chatId, messageId);
-  if (edited && !existing) {
-    console.warn('Ignored edited channel post without tracked article', chatId, messageId);
-    return;
-  }
+  const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
 
   const photo = Array.isArray(message.photo) && message.photo.length
     ? message.photo[message.photo.length - 1]
@@ -491,7 +488,7 @@ async function handleChannelPost(message: any, edited = false) {
   const publicImagePath = photo ? `/uploads/tg-${Math.abs(chatId)}-${messageId}.jpg` : '';
   const post = toArticleMarkdown(
     source.title,
-    source.keyTakeaways,
+    keyTakeaways,
     source.bodyText,
     source.bodyEntities,
     {
@@ -519,7 +516,13 @@ async function handleChannelPost(message: any, edited = false) {
     changes,
     `${edited || existing ? 'update' : 'publish'} article from channel: ${post.slug}`,
   );
-  console.info(edited || existing ? 'Updated article from Telegram channel' : 'Published article from Telegram channel', chatId, messageId, post.slug);
+  console.info(
+    edited || existing ? 'Updated article from Telegram channel' : 'Published article from Telegram channel',
+    chatId,
+    messageId,
+    post.slug,
+    source.keyTakeaways ? 'manual_takeaways' : 'claude_takeaways',
+  );
 }
 
 async function showHome(chatId: number, fromId: number) {
@@ -774,7 +777,7 @@ function localizeError(message: string) {
 const HELP =
   '<b>Публікація контенту</b>\n\n' +
   `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Заповніть кнопками «Заголовок», «Ключові висновки» та «Текст».\n3. Для H2/H3 у тексті використовуйте ## та ###.\n4. Натисніть <b>${CMS.publishArticle}</b>. Бот підтвердить успіх лише після того, як production стане live.\n\n` +
-  '<b>Канал CMS</b>\n1-й абзац = H1/заголовок. 2-й абзац = Key Takeaways. 3-й і далі = звичайний текст; ## = H2, ### = H3. Редагування channel post перебудовує ту саму статтю.\n\n' +
+  '<b>Канал CMS</b>\n1-й абзац = H1/заголовок. Решта = текст статті; ## = H2, ### = H3. Якщо останній абзац починається з «Ключові висновки:», він вирізається з body і використовується як Key Takeaways. Якщо такого абзацу немає, Key Takeaways генерує Claude. Редагування channel post перебудовує ту саму статтю.\n\n' +
   '<b>Кейс</b>\n1. Натисніть <b>💼 Новий кейс</b>.\n2. Заповніть потрібні поля кнопками.\n3. Натисніть <b>✅ Опублікувати кейс</b>.\n\n' +
   `<b>Видалення</b>\nНатисніть <b>${DELETE_ARTICLE_BUTTON}</b> або <b>${DELETE_CASE_BUTTON}</b>, оберіть запис і підтвердьте видалення.\n\n` +
   'Якщо у кейсу задано «Посилання», його картка на сайті відкриватиме зовнішнє джерело.';
