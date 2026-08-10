@@ -18,15 +18,17 @@ ProPersonal Blog працює без VPS, daemon, Redis або database. Source 
 Основні routes:
 
 ```text
-/                         homepage: latest article + Articles + Cases
-/articles                 archive
-/articles/<slug>          article reader
-/cases                    cases archive
-/llms.txt                 machine-facing summary
-/llms-full.txt            machine-facing full content
-/api/telegram             Telegram webhook
-/api/setup                protected webhook setup
+/                                  homepage: latest article + Articles + Cases
+/articles                          archive
+/articles/<slug>                   article reader
+/cases                             cases archive
+/llms.txt                          machine-facing summary
+/llms-full.txt                     machine-facing full content
+/api/telegram                      Telegram webhook
+/api/set-webhook?token=<secret>    one-shot protected webhook registration
 ```
+
+Старого public `/api/setup` UI немає.
 
 ## 2. GitHub
 
@@ -52,7 +54,7 @@ GITHUB_TOKEN=<token>
 
 ## 3. Telegram bot
 
-Створіть або передайте production bot через BotFather та встановіть:
+Створіть або передайте production bot через BotFather та встановіть у Vercel:
 
 ```text
 TELEGRAM_BOT_TOKEN=<bot token>
@@ -69,7 +71,7 @@ Telegram native Start технічно надсилає `/start`; вручну s
 
 ## 4. Telegram access model
 
-Є тільки **дві** access variables.
+Є тільки дві access variables.
 
 ### Users, які можуть користуватися ботом
 
@@ -195,7 +197,15 @@ SETUP_SECRET=<secret 2>
 X-Telegram-Bot-Api-Secret-Token
 ```
 
-`SETUP_SECRET` захищає `/api/setup`.
+`SETUP_SECRET` використовується тільки для одноразового setup endpoint URL:
+
+```text
+/api/set-webhook?token=<SETUP_SECRET>
+```
+
+Missing/wrong token повертає `404`.
+
+Повний setup URL вважати секретом. Query token може залишитися в browser history або infrastructure request logs, тому його не пересилати третім особам. Response має `Cache-Control: no-store` і `Referrer-Policy: no-referrer`.
 
 ## 9. Production env baseline
 
@@ -228,7 +238,7 @@ CASES_URL=/cases
 
 ### SITE_URL
 
-На Vercel зазвичай **не задавати** `SITE_URL`.
+На Vercel зазвичай не задавати `SITE_URL`.
 
 Backend/frontend/build resolve URL так:
 
@@ -244,17 +254,13 @@ SITE_URL override
 
 ## 10. First webhook registration
 
-Після production deploy:
-
-1. Відкрийте:
+Після того як Vercel env variables встановлені і production redeploy завершений, відкрийте один раз:
 
 ```text
-https://CURRENT_PRODUCTION_DOMAIN/api/setup
+https://CURRENT_PRODUCTION_DOMAIN/api/set-webhook?token=<SETUP_SECRET>
 ```
 
-2. Введіть `SETUP_SECRET`.
-3. Натисніть **«Зареєструвати / перереєструвати webhook»**.
-4. `/api/setup` автоматично resolve production URL і реєструє:
+Valid request автоматично resolve production URL і реєструє в Telegram:
 
 ```text
 https://CURRENT_PRODUCTION_DOMAIN/api/telegram
@@ -264,22 +270,35 @@ Registration також:
 
 - передає `WEBHOOK_SECRET` як `secret_token`;
 - встановлює `allowed_updates = message, callback_query, channel_post`;
+- не видаляє pending Telegram updates при re-registration;
 - видаляє registered slash commands;
 - reset menu button;
-- читає `getWebhookInfo` назад.
+- читає `getWebhookInfo` назад і повертає його JSON response.
 
-Після цього **«Перевірити стан webhook»** має показати правильний URL, `channel_post` у allowed updates і відсутність `last_error_message`.
+У successful response перевірити:
+
+```text
+ok: true
+current.result.url = https://CURRENT_PRODUCTION_DOMAIN/api/telegram
+current.result.allowed_updates contains message, callback_query, channel_post
+```
+
+Після цього bot готовий приймати повідомлення через webhook.
 
 ## 11. Коли треба re-register webhook
 
 ### Змінився bot token
 
-1. Update `TELEGRAM_BOT_TOKEN`.
+1. Update `TELEGRAM_BOT_TOKEN` у Vercel.
 2. Redeploy.
-3. Open `/api/setup`.
-4. Register webhook для нового bot.
-5. Add new bot to source channels.
-6. Test bot + channel publication.
+3. Open:
+
+```text
+https://CURRENT_PRODUCTION_DOMAIN/api/set-webhook?token=<SETUP_SECRET>
+```
+
+4. Add new bot to source channels.
+5. Test bot + channel publication.
 
 Old bot має свій власний webhook, доки його не видалити/змінити старим token або не retire bot/token.
 
@@ -287,15 +306,23 @@ Old bot має свій власний webhook, доки його не вида�
 
 1. Update secret.
 2. Redeploy.
-3. **Обов'язково re-register webhook**.
+3. Обов'язково повторно відкрити setup URL.
 
 Інакше Telegram продовжить надсилати старий secret і `/api/telegram` поверне 401.
+
+### Змінився SETUP_SECRET
+
+Redeploy. Новий setup URL використовує новий token. Telegram webhook re-registration не потрібен лише через зміну `SETUP_SECRET`.
 
 ### Додано custom domain
 
 Існуючий webhook на `*.vercel.app/api/telegram` продовжує працювати, поки цей Vercel domain активний. Re-register не потрібен для функціональності.
 
-Якщо хочете, щоб Telegram зберіг webhook саме на custom domain, після його activation відкрийте `/api/setup` на custom domain та register ще раз.
+Якщо хочете, щоб Telegram зберіг webhook саме на custom domain, після activation відкрийте setup URL вже на custom domain:
+
+```text
+https://CUSTOM_DOMAIN/api/set-webhook?token=<SETUP_SECRET>
+```
 
 ### Змінилися access vars
 
@@ -387,9 +414,9 @@ TechArticle
 
 ### Bot does not answer
 
-- `/api/setup` -> webhook status;
-- check `last_error_message`;
-- ensure Deployment Protection does not block Telegram;
+- run the tokenized setup URL again and inspect returned `getWebhookInfo`;
+- check Telegram `last_error_message` in the JSON response;
+- ensure Deployment Protection does not block `/api/telegram`;
 - verify `TELEGRAM_ALLOWED_USER_IDS`; `0` allows everyone.
 
 ### Source channel does not publish
@@ -402,7 +429,13 @@ TechArticle
 
 ### Webhook 401
 
-`WEBHOOK_SECRET` differs from Telegram's stored secret. Redeploy and re-register.
+`WEBHOOK_SECRET` differs from Telegram's stored secret. Redeploy and run setup URL again.
+
+### Setup URL returns 404
+
+- wrong/missing `SETUP_SECRET` token;
+- `SETUP_SECRET` was changed without using the new value;
+- old `/api/setup` route no longer exists by design.
 
 ### GitHub 401/403
 
@@ -428,7 +461,7 @@ Verify `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL`.
 - [ ] `TELEGRAM_ALLOWED_USER_IDS` configured
 - [ ] `TELEGRAM_SOURCE_CHANNEL_IDS` configured
 - [ ] public `TELEGRAM_CHANNEL_URL` configured
-- [ ] webhook status valid
+- [ ] tokenized setup endpoint returned valid Telegram webhook info
 - [ ] bot article test passed
 - [ ] source-channel test passed if used
 - [ ] case test passed
