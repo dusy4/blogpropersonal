@@ -26,7 +26,7 @@ No landing-page services/stats/testimonials and no visible `llms.txt` promotion.
 /sitemap.xml
 /robots.txt
 /api/telegram
-/api/setup
+/api/set-webhook?token=<SETUP_SECRET>
 ```
 
 ## Architecture
@@ -252,24 +252,26 @@ Vercel's Git integration then detects the commit and deploys it.
 
 ## Webhook setup
 
-After environment variables are configured and deployed, open:
+After the Vercel environment variables are configured and deployed, open exactly once:
 
 ```text
-https://PRODUCTION_DOMAIN/api/setup
+https://PRODUCTION_DOMAIN/api/set-webhook?token=<SETUP_SECRET>
 ```
 
-Enter `SETUP_SECRET` and press **Зареєструвати / перереєструвати webhook**.
+There is no public setup page. A missing or incorrect token returns `404`.
 
-The setup route automatically resolves the Vercel production domain and registers:
+A valid request automatically resolves the current Vercel production domain and registers:
 
 ```text
 https://PRODUCTION_DOMAIN/api/telegram
 ```
 
-with `message`, `callback_query`, and `channel_post` updates plus `WEBHOOK_SECRET` as Telegram's `secret_token`.
+with `message`, `callback_query`, and `channel_post` updates plus `WEBHOOK_SECRET` as Telegram's `secret_token`. It also removes registered slash commands, resets the Telegram menu button and returns `getWebhookInfo` for verification.
 
-Re-register after changing `TELEGRAM_BOT_TOKEN` or `WEBHOOK_SECRET`. Access-list changes need only a redeploy.
+The setup response uses `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. Treat the full setup URL as a secret because the query token may remain in browser history or infrastructure request logs.
 
-Adding a custom Vercel domain does not break an existing `*.vercel.app` webhook. Re-register only if you want Telegram's stored webhook URL to use the custom domain itself.
+Re-run the setup URL after changing `TELEGRAM_BOT_TOKEN` or `WEBHOOK_SECRET`. Access-list changes need only a redeploy.
+
+Adding a custom Vercel domain does not break an existing `*.vercel.app` webhook. Re-run the setup URL only if you want Telegram's stored webhook URL to use the custom domain itself.
 
 For the complete transfer/runbook, see `HANDOFF.md`.
