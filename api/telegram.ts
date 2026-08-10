@@ -78,7 +78,6 @@ async function handleMessage(message: any) {
     }));
   }
 
-  // Manual Key Takeaways edit: reply directly to the article preview.
   if (isArticlePreview(message.reply_to_message)) {
     const preview = message.reply_to_message;
     const existing = parseArticlePreview(preview);
@@ -188,7 +187,7 @@ async function handleCallback(callback: any) {
     const source = parseSubmission(original);
     const post = toCaseMarkdown(source.title, source.bodyText, source.bodyEntities);
     await commitFile(`${CASE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish case: ${post.slug}`);
-    return void (await editMessageText(chatId, messageId, `✅ Case published\n${SITE_URL}/cases/${post.slug}`, {
+    return void (await editMessageText(chatId, messageId, `✅ Case published\n${SITE_URL}/#case-${post.slug}`, {
       disable_web_page_preview: true,
     }));
   }
