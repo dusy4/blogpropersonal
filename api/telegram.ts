@@ -243,15 +243,21 @@ async function handleCallback(callback: any) {
       return void (await answerCallbackQuery(callback.id, 'Текст статті не знайдено. Натисніть «Текст» і додайте його ще раз.', true));
     }
 
-    await answerCallbackQuery(callback.id, 'Публікую…');
+    await answerCallbackQuery(callback.id, 'Публікацію розпочато');
+    await sendMessage(chatId, '⏳ Публікую статтю…', menu());
+
     const bodyEntities = bodyMessage.entities || bodyMessage.caption_entities || [];
     const keyTakeaways = draft.keyTakeaways || await generateKeyTakeaways(bodyText);
     const post = toArticleMarkdown(draft.title, keyTakeaways, bodyText, bodyEntities);
     await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article: ${post.slug}`);
 
-    return void (await editMessageText(chatId, messageId, `✅ Статтю опубліковано\n${SITE_URL}/articles/${post.slug}`, {
-      disable_web_page_preview: true,
-    }));
+    const liveUrl = `${SITE_URL}/articles/${post.slug}`;
+    await editMessageText(chatId, messageId, '✅ Чернетку статті опубліковано.');
+    return void (await sendMessage(
+      chatId,
+      `✅ Статтю успішно опубліковано.\n\n🔗 ${liveUrl}\n\nСторінка може з’явитися після завершення Vercel deployment.`,
+      menu(),
+    ));
   }
 
   if (action === 'publish_case') {
@@ -263,7 +269,9 @@ async function handleCallback(callback: any) {
       return void (await answerCallbackQuery(callback.id, 'Додайте опис, посилання або нотатки.', true));
     }
 
-    await answerCallbackQuery(callback.id, 'Публікую кейс…');
+    await answerCallbackQuery(callback.id, 'Публікацію розпочато');
+    await sendMessage(chatId, '⏳ Публікую кейс…', menu());
+
     const post = toCaseMarkdown(draft.title, draft.notes, [], {
       client: draft.client,
       url: draft.url,
@@ -272,12 +280,13 @@ async function handleCallback(callback: any) {
     });
     await commitFile(`${CASE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish case: ${post.slug}`);
 
+    const liveUrl = `${SITE_URL}/#case-${post.slug}`;
     const external = draft.url ? `\nЗовнішнє джерело: ${draft.url}` : '';
-    return void (await editMessageText(
+    await editMessageText(chatId, messageId, '✅ Чернетку кейсу опубліковано.');
+    return void (await sendMessage(
       chatId,
-      messageId,
-      `✅ Кейс опубліковано\n${SITE_URL}/#case-${post.slug}${external}`,
-      { disable_web_page_preview: true },
+      `✅ Кейс успішно опубліковано.\n\n🔗 ${liveUrl}${external}\n\nСторінка може оновитися після завершення Vercel deployment.`,
+      menu(),
     ));
   }
 
