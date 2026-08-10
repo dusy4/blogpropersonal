@@ -1,0 +1,124 @@
+/* Final presentation tuning. Static CSS only; no client-side JavaScript. */
+
+/* Restore the previous latest-article hero proportions. */
+.featured-hero {
+  min-height:405px !important;
+}
+.featured-content {
+  padding:34px 31px !important;
+}
+.featured-content time {
+  margin-top:24px !important;
+}
+.featured-content h1 {
+  margin:14px 0 11px !important;
+}
+.featured-actions {
+  margin-top:25px !important;
+}
+
+/* The article-list visual is one bounded thumbnail, not a column-height image. */
+.articles-visual {
+  height:179px !important;
+  min-height:179px !important;
+  align-self:start !important;
+  background-repeat:no-repeat !important;
+}
+
+/* Compact Telegram CTA while keeping the green panel + Telegram-blue action button. */
+.article-telegram {
+  grid-template-columns:minmax(0,1fr) 31% !important;
+  min-height:220px !important;
+  margin-top:32px !important;
+  border-radius:18px !important;
+}
+.telegram-copy {
+  padding:25px 0 25px 28px !important;
+}
+.telegram-mark {
+  width:40px !important;
+  height:40px !important;
+}
+.telegram-mark svg {
+  width:19px !important;
+  height:19px !important;
+}
+.article-telegram h3 {
+  max-width:430px !important;
+  margin-top:15px !important;
+  font-size:clamp(1.45rem,3.3vw,1.8rem) !important;
+  line-height:1.12 !important;
+}
+.article-telegram p {
+  max-width:430px !important;
+  margin-top:9px !important;
+  font-size:14px !important;
+  line-height:1.48 !important;
+}
+.telegram-cta-button {
+  min-height:43px !important;
+  margin-top:15px !important;
+  padding:0 15px !important;
+  border-radius:9px !important;
+  font-size:13px !important;
+}
+.telegram-cta-button svg {
+  width:16px !important;
+  height:16px !important;
+}
+.telegram-visual {
+  width:255px !important;
+  height:255px !important;
+  right:-48px !important;
+  top:-17px !important;
+}
+.telegram-orb svg {
+  width:112px !important;
+  height:112px !important;
+}
+
+@media(max-width:700px) {
+  .featured-hero {
+    min-height:470px !important;
+  }
+  .featured-content {
+    padding:27px 22px !important;
+  }
+  .articles-visual {
+    height:170px !important;
+    min-height:170px !important;
+  }
+  .article-telegram {
+    grid-template-columns:1fr !important;
+    min-height:270px !important;
+    margin-top:28px !important;
+    border-radius:16px !important;
+  }
+  .telegram-copy {
+    padding:23px 22px 24px !important;
+  }
+  .article-telegram h3 {
+    max-width:86% !important;
+    margin-top:14px !important;
+    font-size:clamp(1.4rem,7vw,1.72rem) !important;
+  }
+  .article-telegram p {
+    max-width:84% !important;
+    margin-top:8px !important;
+    font-size:13.5px !important;
+  }
+  .telegram-cta-button {
+    min-height:42px !important;
+    margin-top:14px !important;
+  }
+  .telegram-visual {
+    width:190px !important;
+    height:190px !important;
+    right:-82px !important;
+    top:18px !important;
+  }
+  .telegram-orb svg {
+    width:80px !important;
+    height:80px !important;
+  }
+}
