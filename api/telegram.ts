@@ -1,17 +1,14 @@
 import {
-  ADMIN_ID, ARTICLE_PATH, CASE_PATH, SITE_URL, WEBHOOK_SECRET,
+  ADMIN_ID, ARTICLE_PATH, CASE_PATH, CMS, SITE_URL, WEBHOOK_SECRET,
   isAllowed, missingRuntimeConfig,
 } from './_lib/config';
 import { generateKeyTakeaways } from './_lib/anthropic';
 import { commitFile } from './_lib/github';
 import {
-  buildArticlePreview, parseArticlePreview, parseSubmission,
+  buildArticlePreview, parseArticlePreview, parseCaseSubmission, parseSubmission,
   toArticleMarkdown, toCaseMarkdown,
 } from './_lib/markdown';
 import { answerCallbackQuery, editMessageText, sendMessage } from './_lib/telegram';
-
-const ARTICLE_PROMPT = '📝 NEW ARTICLE\n\nReply to this message with:\n\nTitle\n\nArticle body\n\nOptional: put “Key Takeaways: …” as the first paragraph after the title. If omitted, Claude Sonnet 5 generates it.';
-const CASE_PROMPT = '💼 NEW CASE\n\nReply to this message with:\n\nCase title\n\nCase description/body\n\nThe first body text is used as the short case description on the home page.';
 
 export default {
   async fetch(request: Request) {
@@ -50,11 +47,11 @@ async function handleMessage(message: any) {
   const fromId = message.from?.id ?? chatId;
   const text = (message.text || message.caption || '').trim();
 
-  // Telegram's native Start button sends /start. Users never need to type commands.
+  // Telegram's native Start button sends /start. The author never needs to type commands.
   if (text === '/start') return void (await showHome(chatId, fromId));
-  if (text === '🆔 My ID') return void (await sendMessage(chatId, `Your Telegram ID: ${fromId}`, menu()));
-  if (text === '❓ Help') return void (await sendMessage(chatId, HELP, { ...menu(), parse_mode: 'HTML' }));
-  if (text === '⚙️ Status') return void (await showStatus(chatId, fromId));
+  if (text === CMS.idButton) return void (await sendMessage(chatId, `Your Telegram ID: ${fromId}`, menu()));
+  if (text === CMS.helpButton) return void (await sendMessage(chatId, HELP, { ...menu(), parse_mode: 'HTML' }));
+  if (text === CMS.statusButton) return void (await showStatus(chatId, fromId));
 
   if (!isAllowed(fromId)) {
     return void (await sendMessage(
@@ -64,17 +61,17 @@ async function handleMessage(message: any) {
     ));
   }
 
-  if (text === '📝 New article') {
-    return void (await sendMessage(chatId, ARTICLE_PROMPT, {
+  if (text === CMS.articleButton) {
+    return void (await sendMessage(chatId, CMS.articlePrompt, {
       ...menu(),
       reply_markup: { force_reply: true, input_field_placeholder: 'Title, blank line, article…' },
     }));
   }
 
-  if (text === '💼 New case') {
-    return void (await sendMessage(chatId, CASE_PROMPT, {
+  if (text === CMS.caseButton) {
+    return void (await sendMessage(chatId, CMS.casePrompt, {
       ...menu(),
-      reply_markup: { force_reply: true, input_field_placeholder: 'Case title, blank line, case…' },
+      reply_markup: { force_reply: true, input_field_placeholder: 'Title, fields, optional notes…' },
     }));
   }
 
@@ -103,7 +100,7 @@ async function prepareArticle(message: any) {
   const chatId = message.chat.id;
   const source = parseSubmission(message);
   if (!source.title || !source.bodyText) {
-    return await sendMessage(chatId, 'Need a title, a blank line, and article body. Tap “📝 New article” and try again.', menu());
+    return await sendMessage(chatId, `Need a title, a blank line, and article body. Tap “${CMS.articleButton}” and try again.`, menu());
   }
 
   const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
@@ -117,17 +114,24 @@ async function prepareArticle(message: any) {
 
 async function prepareCase(message: any) {
   const chatId = message.chat.id;
-  const source = parseSubmission(message);
-  if (!source.title || !source.bodyText) {
-    return await sendMessage(chatId, 'Need a case title, a blank line, and the case body. Tap “💼 New case” and try again.', menu());
+  const source = parseCaseSubmission(message);
+  if (!source.title || (!source.description && !source.url && !source.bodyText)) {
+    return await sendMessage(chatId, `Need a case title plus description, URL, or body. Tap “${CMS.caseButton}” and try again.`, menu());
   }
 
-  const excerpt = source.bodyText.length > 2200 ? `${source.bodyText.slice(0, 2200)}…` : source.bodyText;
-  const text = `${source.title}\n\n${excerpt}`;
-  await sendMessage(chatId, text, {
+  const preview = [
+    source.title,
+    source.client ? `Client: ${source.client}` : '',
+    source.url ? `URL: ${source.url}` : '',
+    source.result ? `Result: ${source.result}` : '',
+    `Description: ${source.description}`,
+  ].filter(Boolean).join('\n\n');
+
+  await sendMessage(chatId, preview, {
     entities: [{ type: 'bold', offset: 0, length: source.title.length }],
     reply_markup: caseKeyboard(),
     reply_parameters: { message_id: message.message_id },
+    disable_web_page_preview: true,
   });
 }
 
@@ -184,12 +188,22 @@ async function handleCallback(callback: any) {
     if (!original) return void (await answerCallbackQuery(callback.id, 'Original case not found.', true));
     await answerCallbackQuery(callback.id, 'Publishing…');
 
-    const source = parseSubmission(original);
-    const post = toCaseMarkdown(source.title, source.bodyText, source.bodyEntities);
+    const source = parseCaseSubmission(original);
+    const post = toCaseMarkdown(source.title, source.bodyText, source.bodyEntities, {
+      client: source.client,
+      url: source.url,
+      result: source.result,
+      description: source.description,
+    });
     await commitFile(`${CASE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish case: ${post.slug}`);
-    return void (await editMessageText(chatId, messageId, `✅ Case published\n${SITE_URL}/#case-${post.slug}`, {
-      disable_web_page_preview: true,
-    }));
+
+    const destination = source.url ? `\nExternal source: ${source.url}` : '';
+    return void (await editMessageText(
+      chatId,
+      messageId,
+      `✅ Case published\n${SITE_URL}/#case-${post.slug}${destination}`,
+      { disable_web_page_preview: true },
+    ));
   }
 
   await answerCallbackQuery(callback.id);
@@ -229,8 +243,8 @@ function menu() {
   return {
     reply_markup: {
       keyboard: [
-        [{ text: '📝 New article' }, { text: '💼 New case' }],
-        [{ text: '⚙️ Status' }, { text: '🆔 My ID' }, { text: '❓ Help' }],
+        [{ text: CMS.articleButton }, { text: CMS.caseButton }],
+        [{ text: CMS.statusButton }, { text: CMS.idButton }, { text: CMS.helpButton }],
       ],
       resize_keyboard: true,
       is_persistent: true,
@@ -265,8 +279,8 @@ function isArticlePreview(message: any) {
 
 const HELP =
   '<b>Publishing flow</b>\n\n' +
-  '1. Tap <b>📝 New article</b> or <b>💼 New case</b>.\n' +
-  '2. Reply to the prompt with title, blank line, then Markdown-style content.\n' +
-  '3. Review the preview.\n' +
-  '4. Use the inline buttons to publish/cancel.\n\n' +
-  'For articles, add <code>Key Takeaways: …</code> as the first paragraph if you want to supply them manually. Otherwise Claude Sonnet 5 generates them. No typed bot commands are required.';
+  `1. Tap <b>${CMS.articleButton}</b> or <b>${CMS.caseButton}</b>.\n` +
+  '2. Reply to the prompt and review the preview.\n' +
+  '3. Use the inline Publish / Cancel buttons.\n\n' +
+  '<b>Articles:</b> optionally add <code>Key Takeaways: …</code>; otherwise Claude generates them.\n\n' +
+  '<b>Cases:</b> optionally add <code>Client:</code>, <code>URL:</code>, <code>Result:</code>, and <code>Description:</code>. When URL is present, the case card opens that external source. No Vercel config change is needed per case.';
