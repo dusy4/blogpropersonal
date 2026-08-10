@@ -33,27 +33,30 @@ export function parseSubmission(message: TelegramMessage) {
   const entities = (message.entities ?? message.caption_entities ?? []) as Entity[];
 
   // Channel CMS contract:
-  // 1st paragraph = H1/title.
-  // Remaining paragraphs = article body.
-  // If the final paragraph starts with the canonical `Ключові висновки:` label,
-  // extract it from the body and use it as manually supplied Key Takeaways.
-  // Otherwise the caller may generate Key Takeaways with Claude.
-  const first = splitFirstParagraph(raw, 0);
-  const bodyStart = skipParagraphWhitespace(raw, first.nextStart);
-  const trailingTakeaways = extractTrailingKeyTakeaways(raw, bodyStart);
-  const bodyEnd = trailingTakeaways?.paragraphStart ?? raw.length;
-  const bodyText = raw.slice(bodyStart, bodyEnd).trimEnd();
-  const bodyEntities = entities
-    .filter((entity) => (
-      entity.offset >= bodyStart
-      && entity.offset + entity.length <= bodyEnd
-      && SENDABLE.has(entity.type)
-    ))
+  // - one paragraph beginning with canonical `Ключові висновки:` may appear anywhere;
+  // - its content must remain inside that same paragraph (until the next blank-line break);
+  // - that paragraph is removed before article structure is parsed;
+  // - the first remaining paragraph = H1/title;
+  // - everything after the title = article body;
+  // - if no tagged paragraph exists, the caller may generate Key Takeaways with Claude.
+  const manualTakeaways = findKeyTakeawaysParagraph(raw);
+  const sourceText = manualTakeaways
+    ? raw.slice(0, manualTakeaways.paragraphStart) + raw.slice(manualTakeaways.removeEnd)
+    : raw;
+  const sourceEntities = manualTakeaways
+    ? removeEntityRange(entities, manualTakeaways.paragraphStart, manualTakeaways.removeEnd)
+    : entities;
+
+  const first = splitFirstParagraph(sourceText, 0);
+  const bodyStart = skipParagraphWhitespace(sourceText, first.nextStart);
+  const bodyText = sourceText.slice(bodyStart).trimEnd();
+  const bodyEntities = sourceEntities
+    .filter((entity) => entity.offset >= bodyStart && SENDABLE.has(entity.type))
     .map((entity) => ({ ...entity, offset: entity.offset - bodyStart }));
 
   return {
     title: stripInlineMarkdown(first.value),
-    keyTakeaways: trailingTakeaways?.keyTakeaways || '',
+    keyTakeaways: manualTakeaways?.keyTakeaways || '',
     bodyText,
     bodyEntities,
   };
@@ -209,25 +212,47 @@ function splitFirstParagraph(text: string, start: number) {
   };
 }
 
-function extractTrailingKeyTakeaways(text: string, bodyStart: number) {
-  let end = text.length;
-  while (end > bodyStart && /\s/.test(text[end - 1])) end -= 1;
-  if (end <= bodyStart) return null;
+function findKeyTakeawaysParagraph(text: string) {
+  let cursor = 0;
 
-  const bodySlice = text.slice(bodyStart, end);
-  const separators = [...bodySlice.matchAll(/\n[ \t]*\n/g)];
-  const lastSeparator = separators.at(-1);
-  const paragraphStart = lastSeparator?.index != null
-    ? bodyStart + lastSeparator.index + lastSeparator[0].length
-    : bodyStart;
-  const paragraph = text.slice(paragraphStart, end).trim();
-  const match = paragraph.match(/^Ключові висновки\s*:\s*([\s\S]+)$/i);
-  if (!match) return null;
+  while (cursor < text.length) {
+    const paragraphStart = skipParagraphWhitespace(text, cursor);
+    if (paragraphStart >= text.length) return null;
 
-  return {
-    paragraphStart,
-    keyTakeaways: match[1].replace(/\s+/g, ' ').trim().slice(0, 1000),
-  };
+    const remainder = text.slice(paragraphStart);
+    const separator = remainder.match(/\n[ \t]*\n/);
+    const paragraphEnd = separator?.index != null
+      ? paragraphStart + separator.index
+      : text.length;
+    const removeEnd = separator?.index != null
+      ? paragraphEnd + separator[0].length
+      : paragraphEnd;
+    const paragraph = text.slice(paragraphStart, paragraphEnd).trim();
+    const match = paragraph.match(/^Ключові висновки\s*:\s*(.+)$/is);
+
+    if (match) {
+      return {
+        paragraphStart,
+        removeEnd,
+        keyTakeaways: match[1].replace(/\s+/g, ' ').trim().slice(0, 1000),
+      };
+    }
+
+    if (!separator) return null;
+    cursor = removeEnd;
+  }
+
+  return null;
+}
+
+function removeEntityRange(entities: Entity[], start: number, end: number) {
+  const removedLength = end - start;
+  return entities.flatMap((entity) => {
+    const entityEnd = entity.offset + entity.length;
+    if (entityEnd <= start) return [{ ...entity }];
+    if (entity.offset >= end) return [{ ...entity, offset: entity.offset - removedLength }];
+    return [];
+  });
 }
 
 function skipParagraphWhitespace(text: string, start: number) {
