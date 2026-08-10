@@ -2,6 +2,7 @@
 import Layout from './Layout.astro';
 import Share from '../components/Share.astro';
 import { TELEGRAM_CHANNEL_URL, SITE_URL } from '../config';
+import '../styles/article.css';
 
 export interface Props {
   title: string;
@@ -30,35 +31,31 @@ const jsonLd = {
   <Fragment slot="head">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   </Fragment>
-  <Fragment slot="header">
-    <slot name="header" />
-  </Fragment>
-  <section class="mx-auto max-w-3xl px-4 py-12 lg:px-8">
-    <article class="prose prose-lg max-w-none prose-headings:text-slate-900 prose-a:text-brand">
-      <h1 class="text-3xl font-bold leading-tight md:text-5xl">{title}</h1>
-      <div class="mt-4 flex items-center gap-3 text-sm text-muted">
-        <span>{author}</span>
-        <span>•</span>
-        <time datetime={dateIso}>{date.toLocaleDateString('uk-UA')}</time>
+  <Fragment slot="header"><slot name="header" /></Fragment>
+
+  <section class="article-shell">
+    <article class="article-body prose max-w-none prose-headings:text-slate-900 prose-a:text-brand md:prose-lg">
+      <h1>{title}</h1>
+      <div class="article-meta">
+        <span>{author}</span><span>•</span><time datetime={dateIso}>{date.toLocaleDateString('uk-UA')}</time>
       </div>
 
-      <div class="my-8 rounded-2xl border-l-4 border-accent bg-amber-50 p-6">
-        <h2 class="text-lg font-semibold text-brand">Ключові висновки</h2>
-        <p class="mt-2 text-slate-700">{keyTakeaways}</p>
+      <div class="key-takeaways">
+        <h2>Ключові висновки</h2>
+        <p>{keyTakeaways}</p>
       </div>
 
       <slot />
     </article>
 
-    <div class="mt-10 rounded-2xl bg-brand p-8 text-white">
-      <h3 class="text-xl font-semibold">Приєднуйтесь до нашого Telegram-каналу</h3>
+    <div class="article-telegram rounded-2xl bg-brand p-8 text-white">
+      <h3 class="m-0 text-xl font-semibold">Приєднуйтесь до нашого Telegram-каналу</h3>
       <p class="mt-2 text-slate-100">Отримуйте новини про AI-інтеграції, кейси та практичні інсайти.</p>
       <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="btn-primary mt-4">Перейти в Telegram →</a>
     </div>
 
-    <Share url={url} title={title} />
+    <div class="article-share"><Share url={url} title={title} /></div>
   </section>
-  <Fragment slot="footer">
-    <slot name="footer" />
-  </Fragment>
+
+  <Fragment slot="footer"><slot name="footer" /></Fragment>
 </Layout>
