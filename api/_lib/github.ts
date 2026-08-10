@@ -7,6 +7,16 @@ export type ContentEntry = {
   title: string;
   slug: string;
   date: string;
+  image: string;
+  sourceChannelId: string;
+  sourceMessageId: string;
+};
+
+export type CommitChange = {
+  path: string;
+  content?: string;
+  bytes?: Uint8Array;
+  delete?: boolean;
 };
 
 const apiBase = () => `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
@@ -29,6 +39,15 @@ function headers() {
 function contentsUrl(path: string) {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
   return `${apiBase()}/contents/${encodedPath}`;
+}
+
+async function githubJson(url: string, init: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: { ...headers(), ...(init.headers || {}) },
+  });
+  if (!response.ok) throw new Error(`GitHub ${response.status}: ${await response.text()}`);
+  return response.json();
 }
 
 export async function commitFile(path: string, content: string, message: string) {
@@ -60,6 +79,57 @@ export async function commitFile(path: string, content: string, message: string)
   return response.json();
 }
 
+export async function commitFiles(changes: CommitChange[], message: string) {
+  assertConfigured();
+  if (!changes.length) throw new Error('No GitHub changes supplied.');
+
+  const branch = await githubJson(`${apiBase()}/branches/${encodeURIComponent(GITHUB_BRANCH)}`) as {
+    commit: { sha: string };
+  };
+  const parentSha = branch.commit.sha;
+  const parentCommit = await githubJson(`${apiBase()}/git/commits/${parentSha}`) as {
+    tree: { sha: string };
+  };
+
+  const tree: Array<{ path: string; mode: string; type: string; sha: string | null }> = [];
+  for (const change of changes) {
+    if (change.delete) {
+      tree.push({ path: change.path, mode: '100644', type: 'blob', sha: null });
+      continue;
+    }
+
+    const encoded = change.bytes
+      ? bytesToBase64(change.bytes)
+      : utf8ToBase64(change.content || '');
+    const blob = await githubJson(`${apiBase()}/git/blobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: encoded, encoding: 'base64' }),
+    }) as { sha: string };
+    tree.push({ path: change.path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+
+  const nextTree = await githubJson(`${apiBase()}/git/trees`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_tree: parentCommit.tree.sha, tree }),
+  }) as { sha: string };
+
+  const commit = await githubJson(`${apiBase()}/git/commits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, tree: nextTree.sha, parents: [parentSha] }),
+  }) as { sha: string };
+
+  await githubJson(`${apiBase()}/git/refs/heads/${GITHUB_BRANCH.split('/').map(encodeURIComponent).join('/')}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sha: commit.sha, force: false }),
+  });
+
+  return commit;
+}
+
 export async function listMarkdownEntries(directory: string): Promise<ContentEntry[]> {
   assertConfigured();
   const requestHeaders = headers();
@@ -86,14 +156,24 @@ export async function listMarkdownEntries(directory: string): Promise<ContentEnt
     const title = readFrontmatterValue(source, 'title') || filenameSlug(item.name);
     const slug = readFrontmatterValue(source, 'slug') || filenameSlug(item.name);
     const date = readFrontmatterValue(source, 'date') || '';
+    const image = readFrontmatterValue(source, 'image') || '';
+    const sourceChannelId = readFrontmatterValue(source, 'sourceChannelId') || '';
+    const sourceMessageId = readFrontmatterValue(source, 'sourceMessageId') || '';
 
-    return { ...item, title, slug, date };
+    return { ...item, title, slug, date, image, sourceChannelId, sourceMessageId };
   }));
 
   return entries.sort((a, b) => {
     const byDate = Date.parse(b.date || '') - Date.parse(a.date || '');
     return Number.isFinite(byDate) && byDate !== 0 ? byDate : b.name.localeCompare(a.name);
   });
+}
+
+export async function findArticleByTelegramSource(directory: string, channelId: number, messageId: number) {
+  const entries = await listMarkdownEntries(directory);
+  return entries.find((entry) =>
+    entry.sourceChannelId === String(channelId) && entry.sourceMessageId === String(messageId)
+  ) || null;
 }
 
 export async function deleteFile(path: string, sha: string, message: string) {
@@ -122,7 +202,10 @@ function filenameSlug(name: string) {
 }
 
 function utf8ToBase64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
+  return bytesToBase64(new TextEncoder().encode(value));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
