@@ -6,15 +6,15 @@ import {
 } from './_lib/config';
 import { generateKeyTakeaways } from './_lib/anthropic';
 import { commitFile } from './_lib/github';
-import {
-  buildArticlePreview, parseArticlePreview, parseSubmission,
-  toArticleMarkdown, toCaseMarkdown,
-} from './_lib/markdown';
+import { parseSubmission, toArticleMarkdown, toCaseMarkdown } from './_lib/markdown';
 import { answerCallbackQuery, editMessageText, sendMessage } from './_lib/telegram';
 
+type ArticleFieldKey = 'title' | 'keyTakeaways' | 'body';
+type ArticleDraft = { title: string; keyTakeaways: string; bodySet: boolean };
 type CaseFieldKey = 'title' | 'client' | 'url' | 'result' | 'description' | 'notes';
 type CaseDraft = Record<CaseFieldKey, string>;
 
+const ARTICLE_FIELD_KEYS: ArticleFieldKey[] = ['title', 'keyTakeaways', 'body'];
 const CASE_FIELD_KEYS: CaseFieldKey[] = ['title', 'client', 'url', 'result', 'description', 'notes'];
 
 export default {
@@ -56,7 +56,6 @@ async function handleMessage(message: any) {
   const fromId = message.from?.id ?? chatId;
   const text = (message.text || message.caption || '').trim();
 
-  // Нативна кнопка Start у Telegram технічно надсилає /start. Користувач не вводить команди вручну.
   if (text === '/start') return void (await showHome(chatId, fromId));
   if (text === CMS.idButton) return void (await sendMessage(chatId, `Ваш Telegram ID: ${fromId}`, menu()));
   if (text === CMS.helpButton) return void (await sendMessage(chatId, HELP, { ...menu(), parse_mode: 'HTML' }));
@@ -71,8 +70,9 @@ async function handleMessage(message: any) {
   }
 
   if (text === CMS.articleButton) {
-    return void (await sendMessage(chatId, CMS.articlePrompt, {
-      reply_markup: { force_reply: true, input_field_placeholder: 'Заголовок, порожній рядок, текст статті…' },
+    return void (await sendMessage(chatId, buildArticleDraftText(emptyArticleDraft()), {
+      reply_markup: articleDraftKeyboard(),
+      disable_web_page_preview: true,
     }));
   }
 
@@ -84,53 +84,75 @@ async function handleMessage(message: any) {
   }
 
   const replied = message.reply_to_message?.text || '';
+  if (replied.startsWith(CMS.articleEditPrefix)) {
+    return void (await saveArticleFieldReply(message));
+  }
   if (replied.startsWith(CMS.caseEditPrefix)) {
     return void (await saveCaseFieldReply(message));
   }
 
-  if (isArticlePreview(message.reply_to_message)) {
-    const preview = message.reply_to_message;
-    const existing = parseArticlePreview(preview);
-    const keyTakeaways = text.replace(/^(key takeaways|kt|ключові висновки)\s*:\s*/i, '').trim();
-    if (!keyTakeaways) return void (await sendMessage(chatId, 'Ключові висновки не можуть бути порожніми.', menu()));
-
-    const previewData = buildArticlePreview(existing.title, keyTakeaways, existing.bodyText, existing.bodyEntities);
-    await editMessageText(chatId, preview.message_id, previewData.text, {
-      entities: previewData.entities,
-      reply_markup: articleKeyboard(),
-    });
-    return void (await sendMessage(chatId, '✅ Ключові висновки збережено.', menu()));
-  }
-
-  if (replied.startsWith('📝 НОВА СТАТТЯ')) return void (await prepareArticle(message));
-
   return void (await sendMessage(chatId, 'Оберіть дію кнопками нижче.', menu()));
 }
 
-async function prepareArticle(message: any) {
+async function saveArticleFieldReply(message: any) {
   const chatId = message.chat.id;
-  const source = parseSubmission(message);
-  if (!source.title || !source.bodyText) {
+  const prompt = message.reply_to_message?.text || '';
+  const field = articleFieldFromPrompt(prompt);
+  const draftMessageId = Number(prompt.match(/Чернетка #(\d+)/)?.[1] || '0');
+  const markerIndex = prompt.indexOf(CMS.articleDraftMarker);
+
+  if (!field || !draftMessageId || markerIndex < 0) {
+    return await sendMessage(chatId, 'Не вдалося відновити чернетку. Відкрийте «Нова стаття» і спробуйте ще раз.', menu());
+  }
+
+  const snapshot = prompt.slice(markerIndex + CMS.articleDraftMarker.length).trim();
+  const draft = parseArticleDraftText(snapshot);
+  let value = (message.text || message.caption || '').trim();
+  const config = CMS.articleFields[field];
+
+  if (value !== CMS.clearValue && value.length > config.maxLength) {
     return await sendMessage(
       chatId,
-      `Потрібні заголовок, порожній рядок і текст статті. Натисніть «${CMS.articleButton}» та спробуйте ще раз.`,
+      `Поле «${config.label}» задовге. Максимум — ${config.maxLength} символів в одному повідомленні.`,
       menu(),
     );
   }
 
-  const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
-  const preview = buildArticlePreview(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
-  await sendMessage(chatId, preview.text, {
-    entities: preview.entities,
-    reply_markup: articleKeyboard(),
-    reply_parameters: { message_id: message.message_id },
+  if (field === 'body') {
+    if (value === CMS.clearValue || !value) {
+      draft.bodySet = false;
+      await editMessageText(chatId, draftMessageId, buildArticleDraftText(draft), {
+        reply_markup: articleDraftKeyboard(),
+        disable_web_page_preview: true,
+      });
+      return;
+    }
+
+    draft.bodySet = true;
+    await sendMessage(chatId, buildArticleDraftText(draft), {
+      reply_markup: articleDraftKeyboard(),
+      reply_parameters: { message_id: message.message_id },
+      disable_web_page_preview: true,
+    });
+    await editMessageText(chatId, draftMessageId, '↪️ Чернетку оновлено нижче.');
+    return;
+  }
+
+  if (value === CMS.clearValue) value = '';
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (field === 'title') draft.title = normalized;
+  else draft.keyTakeaways = normalized;
+
+  await editMessageText(chatId, draftMessageId, buildArticleDraftText(draft), {
+    reply_markup: articleDraftKeyboard(),
+    disable_web_page_preview: true,
   });
 }
 
 async function saveCaseFieldReply(message: any) {
   const chatId = message.chat.id;
   const prompt = message.reply_to_message?.text || '';
-  const field = fieldFromPrompt(prompt);
+  const field = caseFieldFromPrompt(prompt);
   const draftMessageId = Number(prompt.match(/Чернетка #(\d+)/)?.[1] || '0');
   const markerIndex = prompt.indexOf(CMS.caseDraftMarker);
 
@@ -182,6 +204,15 @@ async function handleCallback(callback: any) {
     return void (await editMessageText(chatId, messageId, '❌ Чернетку скасовано.'));
   }
 
+  if (action.startsWith('article_edit:')) {
+    const field = action.slice('article_edit:'.length) as ArticleFieldKey;
+    if (!ARTICLE_FIELD_KEYS.includes(field)) return void (await answerCallbackQuery(callback.id));
+
+    const draft = parseArticleDraftText(callback.message.text || '');
+    await answerCallbackQuery(callback.id, `Редагування: ${CMS.articleFields[field].label}`);
+    return void (await sendArticleFieldPrompt(chatId, messageId, field, draft));
+  }
+
   if (action.startsWith('case_edit:')) {
     const field = action.slice('case_edit:'.length) as CaseFieldKey;
     if (!CASE_FIELD_KEYS.includes(field)) return void (await answerCallbackQuery(callback.id));
@@ -191,39 +222,27 @@ async function handleCallback(callback: any) {
     return void (await sendCaseFieldPrompt(chatId, messageId, field, draft));
   }
 
-  if (action === 'edit_kt') {
-    return void (await answerCallbackQuery(
-      callback.id,
-      'Відповідайте безпосередньо на прев’ю новими ключовими висновками (3–4 речення).',
-      true,
-    ));
-  }
-
-  if (action === 'regen_kt') {
-    const original = callback.message.reply_to_message;
-    if (!original) return void (await answerCallbackQuery(callback.id, 'Оригінальну статтю не знайдено.', true));
-    await answerCallbackQuery(callback.id, 'Генерую знову…');
-    const source = parseSubmission(original);
-    const keyTakeaways = await generateKeyTakeaways(source.bodyText);
-    const preview = buildArticlePreview(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
-    return void (await editMessageText(chatId, messageId, preview.text, {
-      entities: preview.entities,
-      reply_markup: articleKeyboard(),
-    }));
-  }
-
   if (action === 'publish_article') {
-    const original = callback.message.reply_to_message;
-    if (!original) return void (await answerCallbackQuery(callback.id, 'Оригінальну статтю не знайдено.', true));
-    await answerCallbackQuery(callback.id, 'Публікую…');
+    const draft = parseArticleDraftText(callback.message.text || '');
+    if (!draft.title) {
+      return void (await answerCallbackQuery(callback.id, 'Спочатку заповніть заголовок.', true));
+    }
+    if (!draft.bodySet) {
+      return void (await answerCallbackQuery(callback.id, 'Спочатку додайте текст статті.', true));
+    }
 
-    const source = parseSubmission(original);
-    const preview = parseArticlePreview(callback.message);
-    const keyTakeaways = preview.keyTakeaways.startsWith('Ключові висновки буде згенеровано')
-      ? ''
-      : preview.keyTakeaways;
-    const post = toArticleMarkdown(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
+    const bodyMessage = callback.message.reply_to_message;
+    const bodyText = (bodyMessage?.text || bodyMessage?.caption || '').trim();
+    if (!bodyMessage || !bodyText) {
+      return void (await answerCallbackQuery(callback.id, 'Текст статті не знайдено. Натисніть «Текст» і додайте його ще раз.', true));
+    }
+
+    await answerCallbackQuery(callback.id, 'Публікую…');
+    const bodyEntities = bodyMessage.entities || bodyMessage.caption_entities || [];
+    const keyTakeaways = draft.keyTakeaways || await generateKeyTakeaways(bodyText);
+    const post = toArticleMarkdown(draft.title, keyTakeaways, bodyText, bodyEntities);
     await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article: ${post.slug}`);
+
     return void (await editMessageText(chatId, messageId, `✅ Статтю опубліковано\n${SITE_URL}/articles/${post.slug}`, {
       disable_web_page_preview: true,
     }));
@@ -257,6 +276,37 @@ async function handleCallback(callback: any) {
   }
 
   await answerCallbackQuery(callback.id);
+}
+
+async function sendArticleFieldPrompt(chatId: number, draftMessageId: number, field: ArticleFieldKey, draft: ArticleDraft) {
+  const config = CMS.articleFields[field];
+  const current = field === 'body'
+    ? (draft.bodySet ? '✅ додано' : CMS.clearValue)
+    : (draft[field] || CMS.clearValue);
+  const instruction = field === 'body'
+    ? `Відповідайте на це повідомлення повним текстом статті одним повідомленням. Щоб очистити поле, надішліть «${CMS.clearValue}».`
+    : field === 'keyTakeaways'
+      ? `Відповідайте новими ключовими висновками. Поле необов’язкове: якщо залишити порожнім, Claude згенерує його під час публікації. Щоб очистити поле, надішліть «${CMS.clearValue}».`
+      : `Відповідайте новим заголовком. Щоб очистити поле, надішліть «${CMS.clearValue}».`;
+
+  const prompt = [
+    `${CMS.articleEditPrefix} ${config.label}`,
+    '',
+    `Поточне значення: ${current}`,
+    instruction,
+    '',
+    `Чернетка #${draftMessageId}`,
+    CMS.articleDraftMarker,
+    buildArticleDraftText(draft),
+  ].join('\n');
+
+  await sendMessage(chatId, prompt, {
+    reply_markup: {
+      force_reply: true,
+      input_field_placeholder: field === 'body' ? 'Текст статті…' : `${config.label}…`,
+    },
+    disable_web_page_preview: true,
+  });
 }
 
 async function sendCaseFieldPrompt(chatId: number, draftMessageId: number, field: CaseFieldKey, draft: CaseDraft) {
@@ -346,11 +396,16 @@ function menu() {
   };
 }
 
-function articleKeyboard() {
+function articleDraftKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: CMS.publishArticle, callback_data: 'publish_article' }, { text: CMS.cancel, callback_data: 'cancel' }],
-      [{ text: CMS.editTakeaways, callback_data: 'edit_kt' }, { text: CMS.regenerateTakeaways, callback_data: 'regen_kt' }],
+      [
+        { text: CMS.articleFields.title.button, callback_data: 'article_edit:title' },
+        { text: CMS.articleFields.keyTakeaways.button, callback_data: 'article_edit:keyTakeaways' },
+      ],
+      [{ text: CMS.articleFields.body.button, callback_data: 'article_edit:body' }],
+      [{ text: CMS.publishArticle, callback_data: 'publish_article' }],
+      [{ text: CMS.cancel, callback_data: 'cancel' }],
     ],
   };
 }
@@ -374,6 +429,45 @@ function caseKeyboard() {
       [{ text: CMS.cancel, callback_data: 'cancel' }],
     ],
   };
+}
+
+function emptyArticleDraft(): ArticleDraft {
+  return { title: '', keyTakeaways: '', bodySet: false };
+}
+
+function buildArticleDraftText(draft: ArticleDraft) {
+  return [
+    CMS.articleDraftTitle,
+    '',
+    `${CMS.articleFields.title.label}: ${draft.title || CMS.clearValue}`,
+    `${CMS.articleFields.keyTakeaways.label}: ${draft.keyTakeaways || `${CMS.clearValue} (якщо порожньо — Claude)`}`,
+    `${CMS.articleFields.body.label}: ${draft.bodySet ? '✅ додано' : CMS.clearValue}`,
+  ].join('\n');
+}
+
+function parseArticleDraftText(text: string): ArticleDraft {
+  const draft = emptyArticleDraft();
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+
+  const titlePrefix = `${CMS.articleFields.title.label}:`;
+  const takeawaysPrefix = `${CMS.articleFields.keyTakeaways.label}:`;
+  const bodyPrefix = `${CMS.articleFields.body.label}:`;
+
+  const titleLine = lines.find((line) => line.startsWith(titlePrefix));
+  const takeawaysLine = lines.find((line) => line.startsWith(takeawaysPrefix));
+  const bodyLine = lines.find((line) => line.startsWith(bodyPrefix));
+
+  if (titleLine) {
+    const value = titleLine.slice(titlePrefix.length).trim();
+    draft.title = value === CMS.clearValue ? '' : value;
+  }
+  if (takeawaysLine) {
+    const value = takeawaysLine.slice(takeawaysPrefix.length).trim();
+    draft.keyTakeaways = value.startsWith(CMS.clearValue) ? '' : value;
+  }
+  draft.bodySet = Boolean(bodyLine?.includes('✅'));
+
+  return draft;
 }
 
 function emptyCaseDraft(): CaseDraft {
@@ -419,7 +513,15 @@ function parseCaseDraftText(text: string): CaseDraft {
   return draft;
 }
 
-function fieldFromPrompt(prompt: string): CaseFieldKey | null {
+function articleFieldFromPrompt(prompt: string): ArticleFieldKey | null {
+  const firstLine = prompt.split('\n')[0] || '';
+  for (const key of ARTICLE_FIELD_KEYS) {
+    if (firstLine === `${CMS.articleEditPrefix} ${CMS.articleFields[key].label}`) return key;
+  }
+  return null;
+}
+
+function caseFieldFromPrompt(prompt: string): CaseFieldKey | null {
   const firstLine = prompt.split('\n')[0] || '';
   for (const key of CASE_FIELD_KEYS) {
     if (firstLine === `${CMS.caseEditPrefix} ${CMS.caseFields[key].label}`) return key;
@@ -427,22 +529,16 @@ function fieldFromPrompt(prompt: string): CaseFieldKey | null {
   return null;
 }
 
-function isArticlePreview(message: any) {
-  return Boolean(
-    message?.entities?.some((entity: any) => entity.type === 'blockquote') &&
-    message?.entities?.some((entity: any) => entity.type === 'bold' && entity.offset === 0),
-  );
-}
-
 function localizeError(message: string) {
   return message
     .replace('TELEGRAM_BOT_TOKEN is not configured.', 'не налаштовано TELEGRAM_BOT_TOKEN.')
+    .replace('ANTHROPIC_API_KEY is not configured.', 'не налаштовано ANTHROPIC_API_KEY. Заповніть «Ключові висновки» вручну або додайте ключ Anthropic.')
     .replace('Case URL must start with http:// or https://', 'посилання кейсу має починатися з http:// або https://')
     .replace('Not Found', 'не знайдено');
 }
 
 const HELP =
   '<b>Публікація контенту</b>\n\n' +
-  `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Надішліть заголовок, порожній рядок і текст.\n3. Перевірте прев’ю та натисніть «${CMS.publishArticle}».\n\n` +
+  `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Заповніть кнопками «Заголовок», «Ключові висновки» та «Текст».\n3. «Ключові висновки» можна залишити порожніми — тоді Claude згенерує їх під час публікації.\n4. Натисніть <b>${CMS.publishArticle}</b>.\n\n` +
   '<b>Кейс</b>\n1. Натисніть <b>💼 Новий кейс</b>.\n2. У чернетці натискайте окремі кнопки «Назва», «Клієнт», «Посилання», «Результат», «Опис», «Нотатки» та заповнюйте лише потрібні поля.\n3. Кожна відповідь одразу зберігається в чернетці.\n4. Натисніть <b>✅ Опублікувати кейс</b>.\n\n' +
-  'Якщо у кейсу задано «Посилання», його картка на сайті відкриватиме зовнішнє джерело. Для цього не потрібно змінювати Vercel-конфігурацію.';
+  'Якщо у кейсу задано «Посилання», його картка на сайті відкриватиме зовнішнє джерело.';
