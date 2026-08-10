@@ -8,14 +8,21 @@ const CASE_DIR = path.join(ROOT, 'src/content/cases');
 
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
-const SITE_URL = (process.env.SITE_URL || 'https://example.com').replace(/\/$/, '');
+const SITE_URL = normalizeSiteUrl(
+  process.env.SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || 'https://example.com',
+);
 const SKIP = process.env.SKIP_LLM_GENERATION === '1';
+const USE_CLAUDE = !SKIP && Boolean(API_KEY);
 
-if (!SKIP && !API_KEY) {
-  throw new Error('ANTHROPIC_API_KEY is required for the production build. Set it in Vercel Environment Variables.');
+if (!USE_CLAUDE) {
+  console.warn(
+    SKIP
+      ? 'SKIP_LLM_GENERATION=1: generating deterministic Markdown-derived AI files.'
+      : 'ANTHROPIC_API_KEY is not configured: generating deterministic Markdown-derived AI files. Add the key in Vercel and redeploy to enable Claude generation.',
+  );
 }
-if (!SKIP && SITE_URL === 'https://example.com') {
-  throw new Error('SITE_URL is required for the production build. Set the final production domain in Vercel.');
+if (SITE_URL === 'https://example.com') {
+  console.warn('SITE_URL is not configured and no Vercel production URL was available; generated canonical URLs use https://example.com.');
 }
 
 await fs.mkdir(PUBLIC, { recursive: true });
@@ -25,13 +32,15 @@ const cases = await loadDocs(CASE_DIR, 'cases');
 
 for (const doc of articles) {
   if (!doc.meta.keyTakeaways) {
-    const keyTakeaways = SKIP
-      ? fallbackSummary(doc.body)
-      : await claude(
+    const fallback = fallbackSummary(doc.body);
+    const keyTakeaways = USE_CLAUDE
+      ? await claudeOrFallback(
           'Return only 3-4 concise factual Key Takeaways sentences in the same language as the supplied article. No heading, bullets, code fences, or commentary.',
           doc.raw,
           500,
-        );
+          fallback,
+        )
+      : fallback;
     await injectFrontmatterField(doc.file, 'keyTakeaways', keyTakeaways);
     doc.meta.keyTakeaways = keyTakeaways;
     doc.raw = await fs.readFile(doc.file, 'utf8');
@@ -79,7 +88,9 @@ await fs.writeFile(
   'utf8',
 );
 
-console.log(`Generated llms.txt (${articles.length} articles, ${cases.length} cases) with ${SKIP ? 'local fallback' : MODEL}.`);
+console.log(
+  `Generated llms.txt (${articles.length} articles, ${cases.length} cases) with ${USE_CLAUDE ? MODEL : 'deterministic Markdown fallback'}.`,
+);
 
 async function loadDocs(dir, type) {
   const names = (await fs.readdir(dir)).filter((name) => name.endsWith('.md')).sort();
@@ -113,17 +124,25 @@ function parseMarkdown(raw) {
 
 async function makeLlmsEntry(doc) {
   const title = doc.meta.title || doc.slug;
-  if (SKIP) {
-    const description = doc.meta.keyTakeaways || doc.meta.description || fallbackSummary(doc.body);
-    return `- [${title}](${doc.url}): ${oneLine(description)}`;
-  }
+  const fallback = doc.meta.keyTakeaways || doc.meta.description || fallbackSummary(doc.body);
+  if (!USE_CLAUDE) return `- [${title}](${doc.url}): ${oneLine(fallback)}`;
 
-  const output = await claude(
+  const output = await claudeOrFallback(
     `Convert the supplied Markdown document into exactly ONE llms.txt resource bullet. Return only the bullet and nothing else. Use this exact format:\n- [TITLE](${doc.url}): 1-3 concise factual sentences describing the document for an AI agent.\nPreserve the document language. Use the supplied canonical URL exactly. Do not add code fences, headings, preambles, or extra lines.`,
     doc.raw,
     700,
+    `- [${title}](${doc.url}): ${oneLine(fallback)}`,
   );
-  return normalizeEntry(output, title, doc.url, doc.meta.keyTakeaways || doc.meta.description || fallbackSummary(doc.body));
+  return normalizeEntry(output, title, doc.url, fallback);
+}
+
+async function claudeOrFallback(system, content, maxTokens, fallback) {
+  try {
+    return await claude(system, content, maxTokens);
+  } catch (error) {
+    console.warn(`Anthropic generation failed; using Markdown fallback. ${error instanceof Error ? error.message : String(error)}`);
+    return fallback;
+  }
 }
 
 async function claude(system, content, maxTokens) {
@@ -188,4 +207,10 @@ function fallbackSummary(markdown) {
 
 function oneLine(value) {
   return String(value).replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSiteUrl(value) {
+  const trimmed = String(value || '').trim().replace(/\/$/, '');
+  if (!trimmed) return 'https://example.com';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
