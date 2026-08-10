@@ -1,6 +1,7 @@
 import {
-  ADMIN_ID, ARTICLE_PATH, CASE_PATH, CMS, SITE_URL, WEBHOOK_SECRET,
-  TELEGRAM_ALLOW_ANY_USER, TELEGRAM_ALLOWED_USER_IDS, TELEGRAM_SOURCE_CHANNEL_IDS,
+  ARTICLE_PATH, CASE_PATH, CMS, SITE_URL, WEBHOOK_SECRET,
+  TELEGRAM_ALLOW_ANY_USER, TELEGRAM_ALLOWED_USER_IDS,
+  TELEGRAM_ALLOW_ANY_SOURCE_CHANNEL, TELEGRAM_SOURCE_CHANNEL_IDS,
   isAllowed, isSourceChannelAllowed, missingRuntimeConfig,
 } from './_lib/config';
 import { generateKeyTakeaways } from './_lib/anthropic';
@@ -309,14 +310,19 @@ async function showHome(chatId: number, fromId: number) {
 }
 
 async function showStatus(chatId: number, fromId: number) {
-  if (fromId !== ADMIN_ID) return void (await sendMessage(chatId, `Ваш Telegram ID: ${fromId}`, menu()));
+  if (!isAllowed(fromId)) {
+    return void (await sendMessage(chatId, `Ваш Telegram ID: ${fromId}\nПублікацію для цього акаунта вимкнено.`, menu()));
+  }
+
   const missing = missingRuntimeConfig();
   const userAccess = TELEGRAM_ALLOW_ANY_USER
     ? 'усі користувачі'
-    : `${TELEGRAM_ALLOWED_USER_IDS.length + (ADMIN_ID ? 1 : 0)} дозволених ID`;
-  const channelAccess = TELEGRAM_SOURCE_CHANNEL_IDS.length
-    ? TELEGRAM_SOURCE_CHANNEL_IDS.join(', ')
-    : 'не налаштовано';
+    : `${TELEGRAM_ALLOWED_USER_IDS.length} дозволених ID`;
+  const channelAccess = TELEGRAM_ALLOW_ANY_SOURCE_CHANNEL
+    ? 'усі канали'
+    : TELEGRAM_SOURCE_CHANNEL_IDS.length
+      ? `${TELEGRAM_SOURCE_CHANNEL_IDS.length} дозволених каналів`
+      : 'автопублікацію вимкнено';
   const base = missing.length
     ? `⚠️ У Vercel бракує змінних:\n${missing.join('\n')}`
     : '✅ Основна конфігурація CMS заповнена.';
