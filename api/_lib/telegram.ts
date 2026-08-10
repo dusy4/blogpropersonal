@@ -34,7 +34,7 @@ export const setWebhook = (url: string, secret: string) =>
     url,
     secret_token: secret,
     allowed_updates: ['message', 'callback_query', 'channel_post'],
-    drop_pending_updates: true,
+    drop_pending_updates: false,
   });
 
 export const deleteWebhook = () => call('deleteWebhook', { drop_pending_updates: true });
