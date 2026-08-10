@@ -1,26 +1,20 @@
 # ProPersonal Blog
 
-Astro-блог із Telegram CMS, GitHub Markdown, Vercel Functions і build-time генерацією `llms.txt` через Anthropic Claude.
+Astro static blog + Telegram CMS + GitHub Markdown + Vercel Functions + Anthropic Claude.
 
-За основу взято готовий `astroblog_tgblogposter_md`. Збережено article-reading page, CTA, share buttons і Markdown-пайплайн. Додано головну сторінку зі статтями + кейсами, Telegram CMS через кнопки, build-time AI-файли та handoff-конфігурацію.
-
----
-
-## 1. Що бачить відвідувач
-
-Головна сторінка — тільки блог:
+Homepage contains only the editorial product:
 
 ```text
 Header
-Featured article
+Latest article
 Articles
 Cases
 Footer
 ```
 
-Без landing-page блоків, services, stats, testimonials, contact form або видимих LLM-секцій.
+No landing-page services/stats/testimonials and no visible `llms.txt` promotion.
 
-Основні маршрути:
+## Routes
 
 ```text
 /
@@ -31,232 +25,52 @@ Footer
 /llms-full.txt
 /sitemap.xml
 /robots.txt
+/api/telegram
+/api/setup
 ```
 
-`llms.txt` і `llms-full.txt` — machine-facing endpoints; у frontend посилань на них немає.
-
-Увесь видимий UI сайту та Telegram CMS — українською. Назви брендів/сервісів (`ProPersonal`, `Telegram`, `WhatsApp`, `LinkedIn`, `Threads`) залишаються власними назвами.
-
----
-
-## 2. Mental model
-
-Є чотири частини:
-
-- **GitHub** — source of truth для коду й Markdown;
-- **Vercel** — hosting, build і serverless Functions;
-- **Telegram** — CMS UI;
-- **Anthropic Claude** — Key Takeaways і `llms.txt` summaries.
-
-VPS, daemon, Redis, Postgres або постійно запущений script не потрібні.
-
-```mermaid
-flowchart LR
-  U[Автор у Telegram] --> T[Telegram]
-  T -->|Webhook POST| V[Vercel /api/telegram]
-  V -->|за потреби| C[Claude]
-  V -->|Contents API| G[GitHub Markdown]
-  G -->|Git integration| B[Vercel build]
-  B --> A[Astro static site]
-  B --> L[llms.txt]
-  B --> LF[llms-full.txt]
-```
-
-Після публікації:
-
-1. Telegram надсилає update на `/api/telegram`.
-2. Vercel перевіряє webhook secret.
-3. Function створює Markdown.
-4. Function комітить файл у GitHub.
-5. GitHub запускає Vercel deployment.
-6. `prebuild` генерує AI-файли.
-7. Astro генерує static HTML.
-
----
-
-## 3. Чому Telegram може викликати Vercel
-
-Telegram не читає `WEBHOOK_SECRET` із Vercel.
-
-Одноразово `/api/setup` викликає Telegram `setWebhook` і передає:
+## Architecture
 
 ```text
-url = https://DOMAIN/api/telegram
-secret_token = WEBHOOK_SECRET
+Telegram
+-> Vercel /api/telegram
+-> optional Claude Key Takeaways
+-> GitHub Markdown commit
+-> Vercel Git deployment
+-> Astro static site + llms files
 ```
 
-Telegram запам'ятовує їх. Потім кожен webhook містить:
+No VPS, Redis or database is required.
 
-```text
-X-Telegram-Bot-Api-Secret-Token: <WEBHOOK_SECRET>
-```
-
-Vercel Function порівнює header зі своїм `process.env.WEBHOOK_SECRET`.
-
-Отже:
-
-```text
-наш код -> Telegram API     TELEGRAM_BOT_TOKEN
-Telegram -> наш webhook     WEBHOOK_SECRET
-```
-
----
-
-## 4. Структура repository
-
-```text
-.
-├── api/
-│   ├── telegram.ts
-│   ├── setup.ts
-│   └── _lib/
-│       ├── anthropic.ts
-│       ├── config.ts
-│       ├── github.ts
-│       ├── markdown.ts
-│       └── telegram.ts
-├── astro/
-│   ├── scripts/generate-llms.mjs
-│   ├── src/config.ts
-│   ├── src/content/articles/*.md
-│   ├── src/content/cases/*.md
-│   ├── src/pages/index.astro
-│   ├── src/pages/articles/
-│   ├── src/pages/cases.astro
-│   ├── src/layouts/ArticleLayout.astro
-│   └── src/components/Share.astro
-├── .env.example
-├── vercel.json
-├── HANDOFF.md
-└── README.md
-```
-
----
-
-## 5. Де змінювати конфігурацію
-
-### Frontend / branding
-
-Файл:
-
-```text
-astro/src/config.ts
-```
-
-Там зібрані:
-
-- `SITE_NAME`;
-- `SITE_MARK`;
-- `BLOG_SUBTITLE`;
-- `SITE_DESCRIPTION`;
-- `TELEGRAM_CHANNEL_URL`;
-- `ARTICLES_URL`;
-- `CASES_URL`;
-- основні українські UI labels.
-
-Наприклад, якщо кнопка **«Усі кейси»** має вести не на `/cases`, а на зовнішнє портфоліо клієнта:
-
-```text
-CASES_URL=https://client.example/cases
-```
-
-Це глобальний archive destination.
-
-### Telegram / backend
-
-Файл:
-
-```text
-api/_lib/config.ts
-```
-
-Там зібрані:
-
-- content paths;
-- model defaults;
-- українські назви кнопок CMS;
-- поля форми кейсу;
-- максимальні довжини полів;
-- runtime env vars.
-
-Секрети не хардкодити у config — вони приходять тільки з Vercel Environment Variables.
-
----
-
-## 6. Markdown — стаття
-
-```md
----
-title: "Назва статті"
-slug: "nazva-statti"
-date: "2026-08-10"
-keyTakeaways: "3–4 короткі речення."
-author: "ProPersonal"
----
-
-## Розділ
-
-Текст...
-```
-
-Article page містить:
-
-- H1;
-- дату й автора;
-- блок **«Ключові висновки»** перед основним текстом;
-- Markdown H2/H3;
-- Telegram CTA;
-- share buttons;
-- `TechArticle` JSON-LD.
-
----
-
-## 7. Markdown — кейс
-
-```md
----
-title: "Назва кейсу"
-slug: "nazva-keisu"
-date: "2026-08-10"
-client: "ACME"
-description: "Короткий опис для картки"
-result: "-40% ручної роботи"
-url: "https://external.example/case"
----
-
-Додаткові нотатки кейсу...
-```
-
-`client`, `result`, `url` і body notes — опційні.
-
-Якщо `url` заданий, картка кейсу відкриває зовнішнє джерело. Це **дані конкретного кейсу**, а не Vercel config.
-
----
-
-## 8. Telegram CMS
-
-Користувач не вводить `/publish`, `/help`, `/id` тощо.
+## Telegram CMS
 
 Persistent keyboard:
 
 ```text
 📝 Нова стаття      💼 Новий кейс
-⚙️ Стан             🆔 Мій ID       ❓ Допомога
+⚙️ Стан             🆔 Мій ID      ❓ Допомога
 ```
 
-Нативна Telegram-кнопка Start технічно надсилає `/start`; код приймає її тільки для показу меню. Slash commands не реєструються як CMS workflow.
+The Telegram-native Start button technically sends `/start`; users do not need typed CMS commands.
 
----
+### Access
 
-## 9. Публікація статті
-
-Натиснути:
+There are only two access variables:
 
 ```text
-📝 Нова стаття
+TELEGRAM_ALLOWED_USER_IDS=0
+TELEGRAM_SOURCE_CHANNEL_IDS=0
 ```
 
-Потім відповісти:
+`TELEGRAM_ALLOWED_USER_IDS=0` means any Telegram user may use the bot CMS. Otherwise use comma-separated user IDs.
+
+`TELEGRAM_SOURCE_CHANNEL_IDS=0` means any channel where the bot receives `channel_post` may auto-publish. Otherwise use comma-separated channel IDs such as `-1001234567890`.
+
+`ADMIN_ID` is not used.
+
+## Publishing an article through the bot
+
+Press `📝 Нова стаття` and reply:
 
 ```text
 Заголовок
@@ -264,7 +78,7 @@ Persistent keyboard:
 Текст статті...
 ```
 
-Опційно:
+Optional author-provided answer-first summary:
 
 ```text
 Заголовок
@@ -274,32 +88,46 @@ Persistent keyboard:
 Текст статті...
 ```
 
-Якщо висновків немає, Claude генерує їх автоматично.
+If Key Takeaways are omitted, the Telegram runtime uses Anthropic Claude to generate them.
 
-Preview buttons:
+Preview actions:
 
 ```text
-✅ Опублікувати статтю     ❌ Скасувати
-✏️ Ключові висновки       ♻️ Згенерувати знову
+✅ Опублікувати статтю
+❌ Скасувати
+✏️ Ключові висновки
+♻️ Згенерувати знову
 ```
 
-Після Publish створюється:
+Published articles are committed to:
 
 ```text
 astro/src/content/articles/YYYY-MM-DD-slug.md
 ```
 
----
+## Publishing from a Telegram channel
 
-## 10. Публікація кейсу — кнопкова форма
+Add the bot to the source channel. The webhook subscribes to `channel_post`.
 
-Натиснути:
+Post:
 
 ```text
-💼 Новий кейс
+Заголовок
+
+Текст статті...
 ```
 
-Бот створює одне повідомлення-чернетку:
+Allowed channel posts follow the same GitHub -> Vercel publishing pipeline.
+
+For allowlist mode, an unknown channel ID can be discovered from Vercel Runtime Logs after a rejected test post:
+
+```text
+Ignored channel_post from unconfigured channel -1001234567890
+```
+
+## Cases
+
+Press `💼 Новий кейс`. The bot creates one editable draft:
 
 ```text
 🧩 Чернетка кейсу
@@ -314,124 +142,71 @@ astro/src/content/articles/YYYY-MM-DD-slug.md
 —
 ```
 
-Під ним inline buttons:
+Each field has its own inline edit button. A reply changes only that field and updates the original draft message.
+
+Publication requires:
 
 ```text
-✏️ Назва          🏢 Клієнт
-🔗 Посилання      📈 Результат
-📝 Опис           📎 Нотатки
-
-✅ Опублікувати кейс
-❌ Скасувати
+Назва
++
+at least one of: Опис / Посилання / Нотатки
 ```
 
-### Як редагується поле
+`Клієнт` and `Результат` are optional.
 
-1. Натиснути, наприклад, `🏢 Клієнт`.
-2. Бот відкриє Force Reply тільки для поля «Клієнт».
-3. Надіслати `ACME`.
-4. Бот редагує початкову чернетку:
+If `Посилання` is present, the case card opens that external source. Otherwise the case remains an on-page card.
+
+Published cases are committed to:
 
 ```text
-Клієнт: ACME
+astro/src/content/cases/YYYY-MM-DD-slug.md
 ```
 
-5. Натиснути наступне поле.
-6. В кінці натиснути `✅ Опублікувати кейс`.
+## Article reader
 
-Щоб очистити поле, надіслати:
+Article pages contain:
+
+- H1 + author/date;
+- answer-first **Ключові висновки**;
+- Markdown H2/H3;
+- Telegram CTA;
+- native/share buttons for WhatsApp, Telegram, LinkedIn, Threads and copy link;
+- `TechArticle` JSON-LD;
+- canonical/OpenGraph/Twitter metadata.
+
+## AI-readable files
+
+`astro/scripts/generate-llms.mjs` generates at build time:
 
 ```text
-—
+/llms.txt
+/llms-full.txt
+/robots.txt
 ```
 
-Обов'язкова тільки `Назва`; також повинен бути хоча б один із `Опис`, `Посилання`, `Нотатки`.
+`/llms.txt` uses Anthropic when `ANTHROPIC_API_KEY` is configured and falls back to deterministic Markdown-derived summaries if the key/API is unavailable during build.
 
-### Зовнішній кейс
+`/llms-full.txt` is assembled directly from published Markdown.
 
-Заповнити поле:
+## Production URL resolution
+
+Normally do **not** configure `SITE_URL` on Vercel.
+
+The project resolves the production base URL in this order:
 
 ```text
-Посилання = https://client.example/case-study
+SITE_URL override
+-> VERCEL_PROJECT_PRODUCTION_URL
+-> VERCEL_URL
 ```
 
-Після публікації:
+This is used for canonical URLs, sitemap/AI files, Telegram result links and webhook registration.
 
-- Markdown отримує `url`;
-- homepage card стає клікабельною;
-- `/cases` card теж веде на source;
-- `llms.txt` використовує зовнішній URL як ресурс кейсу.
+`SITE_URL` exists only as an optional override for a deliberately chosen canonical domain or non-Vercel deployment.
 
-Не потрібно змінювати Vercel env для кожного кейсу.
+## Required Vercel variables
 
----
-
-## 11. Чому для кнопкової форми не потрібна база даних
-
-Vercel Functions не повинні покладатися на RAM між викликами.
-
-Тому кейс-редактор не тримає draft у process memory.
-
-Коли натискається кнопка поля:
-
-1. callback містить поточний текст draft message;
-2. bot надсилає Force Reply prompt;
-3. prompt містить snapshot поточної чернетки + ID draft message;
-4. наступна user reply містить цей prompt як `reply_to_message`;
-5. Function відновлює draft зі snapshot;
-6. змінює одне поле;
-7. викликає `editMessageText` для початкової чернетки.
-
-Тому немає Redis/Postgres/VPS, але UX виглядає як звичайна форма зі збереженням.
-
----
-
-## 12. Claude / Anthropic
-
-Vercel:
-
-```text
-ANTHROPIC_API_KEY=<secret>
-ANTHROPIC_MODEL=claude-sonnet-5
-```
-
-Claude використовується для:
-
-1. Key Takeaways, коли автор їх не задав;
-2. build-time summaries для `/llms.txt`.
-
-Crawler request до `/llms.txt` не викликає Claude. Файл уже статичний після build.
-
-Якщо key/API тимчасово відсутній, build використовує deterministic Markdown fallback, щоб сайт не падав.
-
----
-
-## 13. llms.txt / llms-full.txt
-
-`astro/scripts/generate-llms.mjs` під час build:
-
-- читає `src/content/articles/*.md`;
-- читає `src/content/cases/*.md`;
-- генерує `/llms.txt`;
-- збирає `/llms-full.txt` із Markdown;
-- генерує `robots.txt` із sitemap URL.
-
-Article URL:
-
-```text
-/articles/<slug>
-```
-
-Case URL:
-
-- external `url`, якщо він заданий;
-- інакше `/#case-<slug>`.
-
----
-
-## 14. Vercel Environment Variables
-
-### Secrets
+Secrets/runtime:
 
 ```text
 TELEGRAM_BOT_TOKEN
@@ -441,134 +216,60 @@ WEBHOOK_SECRET
 SETUP_SECRET
 ```
 
-### Config
+Publishing/config:
 
 ```text
 ANTHROPIC_MODEL=claude-sonnet-5
 GITHUB_OWNER=<owner>
 GITHUB_REPO=blogpropersonal
 GITHUB_BRANCH=main
-ADMIN_ID=<telegram-user-id>
-ALLOWED_IDS=<id1,id2>
-SITE_URL=https://domain.example
+TELEGRAM_ALLOWED_USER_IDS=0
+TELEGRAM_SOURCE_CHANNEL_IDS=0
 TELEGRAM_CHANNEL_URL=https://t.me/...
-DEFAULT_AUTHOR=ProPersonal
-ARTICLES_URL=/articles
-CASES_URL=/cases
+DEFAULT_AUTHOR=Pro Personal Agency
+```
+
+Frontend/handoff options:
+
+```text
 SITE_NAME=ProPersonal
 SITE_MARK=PP
 BLOG_SUBTITLE=Блог про AI-інтеграції та автоматизацію
 SITE_DESCRIPTION=Практичні статті та кейси про AI-інтеграції й автоматизацію.
+ARTICLES_URL=/articles
+CASES_URL=/cases
 ```
 
-`.env.example` містить тільки шаблон, без реальних secrets.
+## GitHub token
 
----
-
-## 15. GitHub token
-
-Vercel Git integration сама по собі не дає `/api/telegram` permission на створення Markdown.
-
-Потрібен client-owned fine-grained PAT для blog repo:
+The Telegram function writes through the GitHub Contents API, so the production token needs access to the target repository with:
 
 ```text
-Repository permissions
-  Contents: Read and write
+Contents: Read and write
 ```
 
-Зберігати у Vercel як:
+Vercel's Git integration then detects the commit and deploys it.
+
+## Webhook setup
+
+After environment variables are configured and deployed, open:
 
 ```text
-GITHUB_TOKEN
+https://PRODUCTION_DOMAIN/api/setup
 ```
 
----
+Enter `SETUP_SECRET` and press **Зареєструвати / перереєструвати webhook**.
 
-## 16. Webhook setup
-
-Після заповнення production envs:
+The setup route automatically resolves the Vercel production domain and registers:
 
 ```text
-https://DOMAIN/api/setup
+https://PRODUCTION_DOMAIN/api/telegram
 ```
 
-Сторінка українською й захищена `SETUP_SECRET`.
+with `message`, `callback_query`, and `channel_post` updates plus `WEBHOOK_SECRET` as Telegram's `secret_token`.
 
-Доступні дії:
+Re-register after changing `TELEGRAM_BOT_TOKEN` or `WEBHOOK_SECRET`. Access-list changes need only a redeploy.
 
-- Зареєструвати / перереєструвати webhook;
-- Перевірити стан webhook;
-- Видалити webhook.
+Adding a custom Vercel domain does not break an existing `*.vercel.app` webhook. Re-register only if you want Telegram's stored webhook URL to use the custom domain itself.
 
-Під час registration:
-
-1. реєструється `${SITE_URL}/api/telegram`;
-2. Telegram отримує `WEBHOOK_SECRET` як `secret_token`;
-3. старі slash commands видаляються;
-4. custom menu button скидається на default.
-
----
-
-## 17. Коли треба перереєстровувати webhook
-
-| Зміна | Redeploy | Re-register webhook |
-|---|---:|---:|
-| `SITE_URL` / domain | так | **так** |
-| `TELEGRAM_BOT_TOKEN` | так | **так** |
-| `WEBHOOK_SECRET` | так | **так** |
-| `SETUP_SECRET` | так | ні |
-| `ANTHROPIC_API_KEY` | так | ні |
-| `GITHUB_TOKEN` | так | ні |
-| `GITHUB_OWNER` / `GITHUB_REPO` | так | ні |
-| `ADMIN_ID` / `ALLOWED_IDS` | так | ні |
-| frontend labels/config | так | ні |
-
----
-
-## 18. Handoff у клієнтську інфраструктуру
-
-Рекомендований порядок:
-
-1. Transfer/fork repo у client GitHub.
-2. Створити client-owned fine-grained PAT.
-3. Import repo у client Vercel.
-4. Перенести домен.
-5. Створити/передати Telegram bot.
-6. Створити client Anthropic key.
-7. Згенерувати нові `WEBHOOK_SECRET` і `SETUP_SECRET`.
-8. Додати env vars у Vercel.
-9. Redeploy.
-10. Відкрити `/api/setup`.
-11. Re-register webhook.
-12. Перевірити `🆔 Мій ID` і `ADMIN_ID`.
-13. Опублікувати test article.
-14. Опублікувати test case через кнопкову форму.
-15. Перевірити GitHub commit → Vercel deployment → frontend.
-16. Перевірити `/llms.txt`, `/llms-full.txt`, `/sitemap.xml` і JSON-LD.
-17. Видалити developer credentials після приймання.
-
-Детальний checklist також є в `HANDOFF.md`.
-
----
-
-## 19. Acceptance checklist
-
-```text
-[ ] Homepage = featured article + articles + cases
-[ ] Responsive mobile/tablet/desktop
-[ ] Article reader працює
-[ ] Ключові висновки перед основним текстом
-[ ] Telegram CTA працює
-[ ] Share buttons працюють
-[ ] TechArticle JSON-LD присутній
-[ ] Telegram CMS українською
-[ ] Case draft редагується окремими кнопками
-[ ] External case URL працює
-[ ] GitHub Markdown створюється ботом
-[ ] Commit запускає Vercel deployment
-[ ] /llms.txt працює
-[ ] /llms-full.txt працює
-[ ] /sitemap.xml працює
-[ ] Secrets не лежать у GitHub
-[ ] /api/setup українською і захищений SETUP_SECRET
-```
+For the complete transfer/runbook, see `HANDOFF.md`.
