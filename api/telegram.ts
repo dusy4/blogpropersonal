@@ -125,7 +125,7 @@ async function saveArticleFieldReply(message: any) {
         reply_markup: articleDraftKeyboard(),
         disable_web_page_preview: true,
       });
-      return;
+      return void (await sendMessage(chatId, `✅ Поле «${config.label}» очищено.`, menu()));
     }
 
     draft.bodySet = true;
@@ -135,7 +135,7 @@ async function saveArticleFieldReply(message: any) {
       disable_web_page_preview: true,
     });
     await editMessageText(chatId, draftMessageId, '↪️ Чернетку оновлено нижче.');
-    return;
+    return void (await sendMessage(chatId, `✅ Поле «${config.label}» збережено.`, menu()));
   }
 
   if (value === CMS.clearValue) value = '';
@@ -147,6 +147,12 @@ async function saveArticleFieldReply(message: any) {
     reply_markup: articleDraftKeyboard(),
     disable_web_page_preview: true,
   });
+
+  await sendMessage(
+    chatId,
+    value ? `✅ Поле «${config.label}» збережено.` : `✅ Поле «${config.label}» очищено.`,
+    menu(),
+  );
 }
 
 async function saveCaseFieldReply(message: any) {
