@@ -1,103 +1,109 @@
 # ProPersonal Blog — Astro + Telegram CMS + Claude + Vercel
 
-Цей репозиторій — повністю self-contained реалізація блогу з ТЗ: статичний Astro-сайт, Markdown як база контенту, AI/AIO-оптимізація, кейси на головній сторінці, Telegram-публікація через кнопки, GitHub як source of truth і Vercel як єдина runtime/build інфраструктура.
+Цей repository є фінальною версією тестового проєкту з ТЗ. За основу взято готовий `astroblog_tgblogposter_md`: збережено його article-reading page, Key Takeaways, Telegram CTA та rich share buttons. Додано тільки те, що потрібно для фінальної архітектури та handoff.
 
-**VPS не потрібен. База даних не потрібна. Окремий daemon/worker не потрібен.**
+## Що бачить користувач сайту
 
-Для production потрібні лише:
+Головна сторінка — **тільки блог**:
 
-- GitHub repository;
-- Vercel project, підключений до repository;
-- Telegram bot token;
-- Anthropic API key;
-- GitHub token з `Contents: Read and write`;
-- домен (опційно, Vercel domain теж працює);
-- кілька Environment Variables у Vercel.
+1. `H1 Блог`;
+2. секція `Статті`;
+3. секція `Кейси` на тій самій сторінці.
 
-> Якщо ви передаєте проєкт клієнту, відкрийте також [`HANDOFF.md`](./HANDOFF.md). Там є покроковий сценарій без припущень про попередню інфраструктуру.
+Немає landing-page блоків, services, stats, testimonials, contact forms, AI/LLM promo sections або іншого маркетингового шуму.
+
+Структура HTML навмисно проста: один `<main>`, прямі `<section>`, semantic `<article>`, H1 → H2 → H3. Контент рендериться статично Astro і присутній у HTML одразу — без tabs, accordion, carousel або client-side fetching.
+
+`/llms.txt` і `/llms-full.txt` існують **тільки як machine-facing endpoints**. Посилань на них у frontend немає.
 
 ---
 
-## 1. Mental model: що тут насправді відбувається
+# 1. Mental model
 
-Є три системи і один source of truth:
+Є чотири частини:
 
-1. **Telegram** — лише UI для автора контенту.
-2. **Vercel Function** — приймає Telegram webhook і виконує backend-логіку.
-3. **Vercel Build** — збирає Astro, генерує `llms.txt`/`llms-full.txt` і статичні сторінки.
-4. **GitHub repository** — єдиний постійний source of truth для контенту та коду.
+- **GitHub** — source of truth для коду та Markdown контенту;
+- **Vercel** — hosting, Functions і build runtime;
+- **Telegram** — UI для content management;
+- **Anthropic Claude** — summarization для Key Takeaways та `llms.txt`.
+
+Ніякий VPS, daemon, Redis, Postgres або постійно запущений script не потрібен.
 
 ```mermaid
 flowchart LR
-  A[Author in Telegram] -->|message / buttons| T[Telegram servers]
-  T -->|HTTPS POST + webhook secret header| V[Vercel Function /api/telegram]
-  V -->|if KT missing| C[Claude Sonnet 5]
-  V -->|GitHub Contents API| G[(GitHub repo\n.md files)]
-  G -->|push triggers deployment| B[Vercel Build]
-  B -->|reads Markdown| C2[Claude Sonnet 5]
-  C2 --> B
-  B --> L[public/llms.txt]
-  B --> F[public/llms-full.txt]
-  B --> S[Static Astro site]
+  U[Author in Telegram] --> T[Telegram servers]
+  T -->|POST webhook + secret header| V[Vercel Function /api/telegram]
+  V -->|optional KT generation| C[Claude Sonnet 5]
+  V -->|GitHub Contents API| G[(GitHub Markdown)]
+  G -->|Git push triggers deploy| B[Vercel build]
+  B -->|summarize Markdown| C2[Claude Sonnet 5]
+  B --> L[/llms.txt]
+  B --> LF[/llms-full.txt]
+  B --> A[Astro static site]
 ```
 
-### Найважливіше
+## Що відбувається після Publish у Telegram
 
-Коли людина пише боту, **Telegram app на телефоні не звертається напряму до Vercel**.
-
-Потік такий:
-
-1. користувач надсилає повідомлення Telegram;
-2. Telegram server бачить, що для бота зареєстровано webhook URL;
-3. Telegram server робить `POST https://YOUR_DOMAIN/api/telegram`;
-4. Telegram додає header `X-Telegram-Bot-Api-Secret-Token`;
-5. Vercel Function порівнює цей header із `WEBHOOK_SECRET` у Vercel;
-6. тільки після цього обробляє update.
-
-`WEBHOOK_SECRET` не витягується Telegram-ом з Vercel. **Ми один раз передаємо його Telegram при `setWebhook`.** Telegram запам'ятовує секрет і надсилає його назад у кожному webhook request.
+1. Автор натискає кнопку в Telegram bot.
+2. Telegram server надсилає update на `https://DOMAIN/api/telegram`.
+3. Vercel Function перевіряє `X-Telegram-Bot-Api-Secret-Token`.
+4. Function формує `.md`.
+5. Function комітить `.md` у GitHub через Contents API.
+6. GitHub commit автоматично запускає Vercel deployment.
+7. `prebuild` генерує `llms.txt` / `llms-full.txt`.
+8. Astro генерує static HTML.
+9. Нова стаття або кейс з'являється на сайті.
 
 ---
 
-## 2. Чому немає VPS
+# 2. Чому Telegram може викликати Vercel
 
-Backend знаходиться в `api/*.ts`. Vercel автоматично перетворює ці файли на Functions.
+Telegram **не читає secret із Vercel**.
 
-- `/api/telegram` — Telegram webhook;
-- `/api/setup` — protected UI для register/re-register/delete/check Telegram webhook.
+Під час одноразової реєстрації webhook наш `/api/setup` викликає Telegram `setWebhook` і передає:
 
-Function запускається лише коли приходить request. Немає процесу, який треба тримати online вручну.
+```text
+url = https://DOMAIN/api/telegram
+secret_token = WEBHOOK_SECRET
+```
 
-Контент після публікації комітиться у GitHub. Цей commit автоматично запускає новий Vercel deployment.
+Telegram запам'ятовує URL + secret. Після цього кожен update містить header:
+
+```text
+X-Telegram-Bot-Api-Secret-Token: <WEBHOOK_SECRET>
+```
+
+Vercel Function порівнює header з `process.env.WEBHOOK_SECRET`.
+
+Отже:
+
+- наш app → Telegram API: auth через `TELEGRAM_BOT_TOKEN`;
+- Telegram → Vercel webhook: auth через `WEBHOOK_SECRET`.
 
 ---
 
-## 3. Структура repository
+# 3. Repository structure
 
 ```text
 .
 ├── api/
 │   ├── telegram.ts              # Telegram CMS webhook
-│   ├── setup.ts                 # Protected webhook setup page
+│   ├── setup.ts                 # protected webhook setup UI
 │   └── _lib/
-│       ├── anthropic.ts         # Claude Sonnet 5 calls for Key Takeaways
-│       ├── config.ts            # Runtime env configuration
-│       ├── github.ts            # Commit .md through GitHub Contents API
-│       ├── markdown.ts          # Telegram -> Markdown/frontmatter
-│       └── telegram.ts          # Thin Telegram Bot API client
+│       ├── anthropic.ts         # Claude Key Takeaways
+│       ├── config.ts            # runtime env vars
+│       ├── github.ts            # GitHub Contents API
+│       ├── markdown.ts          # Telegram -> Markdown
+│       └── telegram.ts          # Telegram Bot API wrapper
 ├── astro/
-│   ├── scripts/
-│   │   └── generate-llms.mjs    # Build-time Claude -> llms.txt
-│   ├── public/
-│   ├── src/
-│   │   ├── content/
-│   │   │   ├── articles/*.md
-│   │   │   └── cases/*.md
-│   │   ├── pages/
-│   │   ├── layouts/
-│   │   ├── components/
-│   │   └── styles/
-│   ├── package.json
-│   └── tailwind.config.mjs
+│   ├── scripts/generate-llms.mjs
+│   ├── src/content/articles/*.md
+│   ├── src/content/cases/*.md
+│   ├── src/pages/index.astro
+│   ├── src/pages/articles/
+│   ├── src/pages/cases.astro
+│   ├── src/layouts/ArticleLayout.astro
+│   └── src/components/Share.astro
 ├── .env.example
 ├── vercel.json
 ├── HANDOFF.md
@@ -106,106 +112,125 @@ Function запускається лише коли приходить request. 
 
 ---
 
-## 4. Сайт
+# 4. Frontend structure
 
-Головна сторінка має саме необхідну структуру:
+## `/`
 
-- hero/introduction;
-- **Articles**;
-- **Cases на цій же головній сторінці**;
-- CTA;
-- links на `llms.txt` та `llms-full.txt`.
-
-Окремі article/case routes залишаються, бо кожному матеріалу потрібна canonical URL:
+Homepage:
 
 ```text
-/articles/<slug>
-/cases/<slug>
+Blog
+  Articles
+    featured latest article
+    remaining article cards
+
+  Cases
+    case cards
 ```
 
-### Article page
+The homepage reads directly from both Astro content collections. No hardcoded fake cases are used.
 
-Кожна стаття автоматично має:
+Each case gets a stable anchor:
 
-- H1;
-- Answer-First блок `Key Takeaways`;
-- Markdown H2/H3 content;
-- canonical URL;
-- `TechArticle` JSON-LD;
-- social share links;
-- CTA на Telegram.
+```text
+/#case-<slug>
+```
 
-### Case page
+There is no invented `/cases/<slug>` detail route. The original project only needed a cases section/list, so case publication points to the real homepage anchor.
 
-Кожен case має:
+## `/articles`
 
-- canonical route;
-- description/result;
-- `Article` JSON-LD;
-- share links;
-- CTA.
+Simple article archive retained from the baseline project.
+
+## `/cases`
+
+Simple case archive retained from the baseline project.
+
+## `/articles/<slug>`
+
+The original rich article reader is preserved:
+
+- H1 article title;
+- author/date;
+- highlighted Answer-First `Key Takeaways` block;
+- Markdown H2/H3 body;
+- Telegram CTA;
+- rich share component:
+  - native device share;
+  - WhatsApp;
+  - Telegram;
+  - LinkedIn;
+  - Threads;
+  - Copy Link;
+- `TechArticle` JSON-LD.
+
+This matches the TЗ requirements for Answer-First content, Schema.org, CTA and social sharing.
 
 ---
 
-## 5. Markdown — база даних контенту
+# 5. Markdown content
 
-Ніякої CMS database немає.
+GitHub Markdown is the persistent database.
 
-Стаття:
+## Article
 
 ```md
 ---
 title: "Article title"
 slug: "article-title"
 date: "2026-08-10"
-keyTakeaways: "3-4 sentences..."
+keyTakeaways: "Three or four concise sentences."
 author: "Pro Personal Agency"
 ---
 
-## Heading
+## Section
 
 Article body...
+
+### Subsection
+
+More content...
 ```
 
-Case:
+## Case
 
 ```md
 ---
 title: "Case title"
 slug: "case-title"
 date: "2026-08-10"
-description: "Short card description"
+description: "Short description for card"
 client: "Optional client"
 result: "Optional result"
 ---
 
-## Problem
-...
+Full case notes/content...
 ```
-
-GitHub — це permanent storage. Якщо Vercel project видалити і створити заново, контент не губиться.
 
 ---
 
-## 6. Telegram CMS: без typed commands
+# 6. Telegram CMS — buttons, not commands
 
-Автор не повинен пам'ятати `/publish`, `/help` тощо.
+The author does not use `/publish`, `/help`, `/id`, etc.
 
-Після стандартної Telegram кнопки **Start** бот показує persistent keyboard:
+The bot uses a persistent reply keyboard:
 
-- `📝 New article`
-- `💼 New case`
-- `⚙️ Status`
-- `🆔 My ID`
-- `❓ Help`
+```text
+📝 New article     💼 New case
+⚙️ Status          🆔 My ID      ❓ Help
+```
 
-`/start` існує лише як технічний payload, який Telegram сам надсилає після native Start button. Людина не повинна його вводити.
+Telegram's native first **Start** button internally sends `/start`; the code accepts this only to reveal the keyboard. No slash commands are registered, exposed or required. `/api/setup` deletes any old registered commands and resets an old custom menu button when the webhook is registered.
 
-### Publish article
+## Publish article
 
-1. Tap `📝 New article`.
-2. Bot показує reply prompt.
-3. Надіслати:
+Tap:
+
+```text
+📝 New article
+```
+
+Reply to the prompt:
 
 ```text
 Article title
@@ -213,7 +238,7 @@ Article title
 Article body...
 ```
 
-Опційно manual Key Takeaways:
+Optional manual summary:
 
 ```text
 Article title
@@ -223,20 +248,30 @@ Key Takeaways: Sentence one. Sentence two. Sentence three.
 Article body...
 ```
 
-4. Якщо Key Takeaways не задані — Vercel Function викликає Claude Sonnet 5.
-5. Bot показує preview.
-6. Inline buttons:
-   - Publish article;
-   - Cancel;
-   - Edit Key Takeaways;
-   - Regenerate Key Takeaways.
-7. Publish commits `.md` у GitHub.
-8. GitHub commit запускає Vercel build.
+If Key Takeaways are absent and `ANTHROPIC_API_KEY` is configured, Claude generates them.
 
-### Publish case
+Preview buttons:
 
-1. Tap `💼 New case`.
-2. Reply:
+```text
+✅ Publish article    ❌ Cancel
+✍️ Edit Key Takeaways    ♻️ Regenerate
+```
+
+Publish commits:
+
+```text
+astro/src/content/articles/YYYY-MM-DD-slug.md
+```
+
+## Publish case
+
+Tap:
+
+```text
+💼 New case
+```
+
+Reply:
 
 ```text
 Case title
@@ -244,506 +279,438 @@ Case title
 Case body...
 ```
 
-3. Bot створює preview.
-4. Tap `Publish case`.
-5. `.md` потрапляє в `astro/src/content/cases/`.
+Preview buttons:
 
-### Чому Telegram CMS не потребує Redis/DB
+```text
+✅ Publish case    ❌ Cancel
+```
 
-Vercel Functions stateless. Тому workflow спеціально побудований навколо Telegram message replies та inline callback buttons.
+Publish commits:
 
-Preview відповідає на оригінальний submission message. Коли користувач натискає `Publish`, callback містить preview message, а preview посилається на вихідний Telegram message. Function може знову прочитати початковий content без server-side session storage.
+```text
+astro/src/content/cases/YYYY-MM-DD-slug.md
+```
+
+After deployment the bot links to:
+
+```text
+https://DOMAIN/#case-<slug>
+```
+
+## Why no database is needed
+
+The preview is sent as a Telegram reply to the original submission. Telegram includes the replied-to message in the callback message, so Publish can reconstruct the original content without storing a draft session in Redis/Postgres.
 
 ---
 
-## 7. Claude Sonnet 5
+# 7. Claude / Anthropic
 
-Default API model ID:
-
-```text
-claude-sonnet-5
-```
-
-Його можна замінити без зміни коду через:
+Recommended production setup:
 
 ```text
-ANTHROPIC_MODEL
+ANTHROPIC_API_KEY=<secret>
+ANTHROPIC_MODEL=claude-sonnet-5
 ```
 
-### Claude використовується у двох місцях
+Both belong in **Vercel Environment Variables**, never in GitHub/frontend code.
 
-#### A. Key Takeaways
+Claude is used in two places.
 
-Якщо Telegram-автор не задав Key Takeaways вручну, `api/_lib/anthropic.ts` робить Claude call і записує результат у Markdown перед GitHub commit.
+## A. Key Takeaways
 
-Це важливо: generated Key Takeaways стають частиною repository content, а не випадковим runtime output.
+If an article sent through Telegram has no manual Key Takeaways, `/api/telegram` calls Claude and stores the generated summary in the Markdown committed to GitHub.
 
-Також `astro/scripts/generate-llms.mjs` має fallback: якщо хтось вручну commit-нув `.md` без `keyTakeaways`, build викликає Claude і додає поле у build-time copy Markdown перед Astro render.
+If someone manually commits an article without `keyTakeaways`, build-time generation fills it in the Vercel build copy before Astro validates/renders content.
 
-Build filesystem Vercel є тимчасовим, тому build-time fallback **не комітить назад у GitHub**. Для Telegram flow Key Takeaways зберігаються постійно ще до deployment.
+The build-time write is ephemeral; it is not committed back to GitHub.
 
-#### B. `/llms.txt`
+## B. `/llms.txt`
 
-На кожному production build script читає `.md` матеріали та для кожного просить Claude повернути тільки один `llms.txt`-formatted resource entry.
+During every build, `astro/scripts/generate-llms.mjs` reads the Markdown documents and asks Claude to return one concise llms-compatible resource line for each document.
 
-Після цього код детерміновано збирає один site-level:
+The script then deterministically assembles one root file:
 
 ```text
-https://DOMAIN/llms.txt
+/llms.txt
 ```
 
-Це не runtime Claude request. Crawler, який відкриває `/llms.txt`, отримує вже готовий static file.
+Crawler requests do **not** call Claude at runtime. `llms.txt` is already static in the deployment.
+
+If Anthropic is temporarily unavailable or the key has not yet been added, the build still succeeds using deterministic Markdown-derived summaries. This keeps the site deployable during infrastructure setup. Production should still configure the Anthropic key to use the requested Claude summarization.
 
 ---
 
-## 8. `/llms-full.txt`
+# 8. `/llms-full.txt`
 
-`llms-full.txt` не потребує summarization.
+`/llms-full.txt` does not need Claude.
 
-Build script копіює повний Markdown-derived content статей та кейсів і додає canonical URL кожного матеріалу.
+The build concatenates the complete Markdown-derived article/case corpus with source URLs.
+
+Article entries point to:
 
 ```text
-https://DOMAIN/llms-full.txt
+/articles/<slug>
 ```
 
-Це дає AI-agent повний corpus без необхідності обходити HTML сторінки.
+Case entries point to:
+
+```text
+/#case-<slug>
+```
+
+No `llms` link is displayed to human visitors.
 
 ---
 
-## 9. Build lifecycle
+# 9. Build lifecycle
 
-`vercel.json` запускає:
+`vercel.json` runs:
 
 ```text
 cd astro && npm install
 cd astro && npm run build
 ```
 
-`npm run build` автоматично запускає `prebuild`:
+`npm run build` automatically invokes:
 
 ```text
-node scripts/generate-llms.mjs
+prebuild -> node scripts/generate-llms.mjs
+build    -> astro build
 ```
 
-Отже порядок:
+Generated static outputs include:
 
-```mermaid
-sequenceDiagram
-  participant G as GitHub
-  participant V as Vercel Build
-  participant C as Claude Sonnet 5
-  participant A as Astro
-
-  G->>V: New commit
-  V->>V: npm install
-  V->>V: prebuild generate-llms.mjs
-  V->>C: .md -> llms.txt entry
-  C-->>V: formatted entry
-  V->>V: write public/llms.txt + llms-full.txt
-  V->>A: astro build
-  A-->>V: static dist/
-  V-->>V: publish deployment
+```text
+/
+/articles
+/articles/<slug>
+/cases
+/llms.txt
+/llms-full.txt
+/sitemap.xml
+/robots.txt
 ```
+
+The sitemap contains only real HTML routes. It does not advertise nonexistent case-detail routes.
 
 ---
 
-## 10. Environment Variables
+# 10. Vercel Environment Variables
 
-Copy `.env.example` mentally; **do not commit real values**.
+## Secrets
 
-| Variable | Required | Secret? | Used for |
-|---|---:|---:|---|
-| `TELEGRAM_BOT_TOKEN` | yes | yes | calling Telegram API / identifying the bot |
-| `ANTHROPIC_API_KEY` | yes | yes | Claude API |
-| `ANTHROPIC_MODEL` | no | no | defaults to `claude-sonnet-5` |
-| `GITHUB_TOKEN` | yes | yes | creating/updating Markdown files |
-| `GITHUB_OWNER` | yes | no | destination repo owner |
-| `GITHUB_REPO` | yes | no | destination repo name |
-| `GITHUB_BRANCH` | yes | no | usually `main` |
-| `WEBHOOK_SECRET` | yes | yes | Telegram -> Vercel request verification |
-| `SETUP_SECRET` | yes | yes | protects `/api/setup` admin UI |
-| `ADMIN_ID` | recommended | no | Telegram admin user ID |
-| `ALLOWED_IDS` | optional | no | comma-separated extra publishers/channel IDs |
-| `SITE_URL` | yes | no | final production URL/canonical URL/webhook origin |
-| `TELEGRAM_CHANNEL_URL` | recommended | no | CTA target on site |
-| `DEFAULT_AUTHOR` | optional | no | article byline |
+These must be stored only in Vercel:
 
-### Generate secrets
+| Variable | Purpose |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | authenticate our calls to Telegram |
+| `ANTHROPIC_API_KEY` | Claude API |
+| `GITHUB_TOKEN` | write Markdown to GitHub |
+| `WEBHOOK_SECRET` | authenticate Telegram webhook requests |
+| `SETUP_SECRET` | protect `/api/setup` mutations |
 
-`WEBHOOK_SECRET` must follow Telegram's allowed characters: letters, digits, `_`, `-`.
+## Configuration
 
-Example generation on macOS/Linux:
+| Variable | Purpose | Typical value |
+|---|---|---|
+| `ANTHROPIC_MODEL` | Claude model | `claude-sonnet-5` |
+| `GITHUB_OWNER` | repository owner | `dusy4` before handoff |
+| `GITHUB_REPO` | repository name | `blogpropersonal` |
+| `GITHUB_BRANCH` | publish branch | `main` |
+| `ADMIN_ID` | Telegram admin ID | numeric |
+| `ALLOWED_IDS` | additional publishers | comma-separated IDs |
+| `SITE_URL` | final production origin | `https://blog.example.com` |
+| `TELEGRAM_CHANNEL_URL` | public CTA destination | `https://t.me/...` |
+| `DEFAULT_AUTHOR` | byline | `Pro Personal Agency` |
 
-```bash
-openssl rand -hex 32
-```
-
-Hex is valid for `WEBHOOK_SECRET` and `SETUP_SECRET`.
+Do not put real secrets in `.env.example`, README, source code, Telegram messages or GitHub Actions logs.
 
 ---
 
-## 11. Webhook registration
+# 11. GitHub token
 
-Do **not** paste the Telegram bot token or webhook secret into a public browser URL.
+Vercel's GitHub deployment integration does not automatically give `/api/telegram` permission to create Markdown files.
 
-This repo provides:
-
-```text
-https://YOUR_DOMAIN/api/setup
-```
-
-Open it, enter `SETUP_SECRET`, then choose:
-
-- Register / re-register webhook;
-- Check webhook status;
-- Delete webhook.
-
-When Register is pressed, the Vercel Function performs Telegram `setWebhook` with:
+Create a client-owned **fine-grained PAT** scoped only to the blog repository with:
 
 ```text
-URL: https://YOUR_DOMAIN/api/telegram
-secret_token: WEBHOOK_SECRET
+Repository permissions
+  Contents: Read and write
 ```
 
-After this Telegram stores both values.
+Store it as:
 
-### When must webhook be re-registered?
+```text
+GITHUB_TOKEN
+```
 
-| Change | Redeploy? | Re-register webhook? |
+The Function uses GitHub's Contents API to create/update `.md` files.
+
+---
+
+# 12. Webhook registration
+
+After production env vars and final `SITE_URL` are configured, open:
+
+```text
+https://DOMAIN/api/setup
+```
+
+Enter `SETUP_SECRET` and press:
+
+```text
+Register / re-register webhook
+```
+
+The setup Function:
+
+1. calls Telegram `setWebhook`;
+2. registers `https://DOMAIN/api/telegram`;
+3. passes `WEBHOOK_SECRET` as Telegram `secret_token`;
+4. deletes old bot command registrations;
+5. resets the Telegram menu button to default;
+6. displays current webhook status.
+
+The setup page can also check status or delete the webhook.
+
+---
+
+# 13. What requires webhook re-registration
+
+| Changed value | Redeploy | Re-register webhook |
 |---|---:|---:|
 | `SITE_URL` / domain | yes | **yes** |
-| `TELEGRAM_BOT_TOKEN` / new bot | yes | **yes** |
+| `TELEGRAM_BOT_TOKEN` | yes | **yes** |
 | `WEBHOOK_SECRET` | yes | **yes** |
 | `SETUP_SECRET` | yes | no |
 | `ANTHROPIC_API_KEY` | yes | no |
 | `ANTHROPIC_MODEL` | yes | no |
 | `GITHUB_TOKEN` | yes | no |
-| `GITHUB_OWNER/REPO/BRANCH` | yes | no |
+| `GITHUB_OWNER` / `GITHUB_REPO` | yes | no |
 | `ADMIN_ID` / `ALLOWED_IDS` | yes | no |
 | `TELEGRAM_CHANNEL_URL` | yes | no |
-| article/case content | automatic deployment | no |
 
-**Rule:** webhook re-registration потрібна, якщо змінилося *куди Telegram дзвонить*, *який Telegram bot використовується*, або *який secret Telegram повинен надсилати*.
+Rule: re-register only when Telegram's target URL, bot identity or webhook secret changes.
 
 ---
 
-## 12. GitHub token
+# 14. Initial production setup
 
-Telegram Function не може записувати `.md` у repository лише тому, що Vercel підключений до GitHub.
+Recommended order:
 
-Потрібен окремий GitHub credential.
+1. Push/import the repository to GitHub.
+2. Create/import the Vercel project from that repository.
+3. Create Telegram bot/token.
+4. Create Anthropic API key.
+5. Create fine-grained GitHub PAT.
+6. Generate `WEBHOOK_SECRET` and `SETUP_SECRET`.
+7. Add Vercel Production Environment Variables.
+8. Set final domain and `SITE_URL`.
+9. Redeploy.
+10. Open `/api/setup` and register webhook.
+11. Open Telegram bot and press native Start.
+12. Tap `🆔 My ID`.
+13. Set `ADMIN_ID` in Vercel.
+14. Redeploy.
+15. Publish test article.
+16. Verify GitHub commit → Vercel deployment → article page.
+17. Publish test case.
+18. Verify case appears on homepage.
+19. Verify `/llms.txt`, `/llms-full.txt`, `/sitemap.xml` and article JSON-LD.
 
-Recommended: fine-grained Personal Access Token, scoped тільки до цього repository, з permission:
+---
+
+# 15. Client handoff
+
+The codebase should not need rewriting during handoff. Replace ownership and credentials.
+
+## GitHub transfer
+
+After repository ownership changes:
 
 ```text
-Repository permissions -> Contents -> Read and write
+GITHUB_OWNER=<client>
+GITHUB_REPO=<repo>
+GITHUB_BRANCH=main
+GITHUB_TOKEN=<client-owned PAT>
 ```
 
-Token зберігається тільки у Vercel `GITHUB_TOKEN`.
+Also ensure the client's Vercel project is connected to the same repository/branch.
 
-Він не потрібен у frontend і не повинен мати доступу до зайвих repositories.
+## New domain
 
----
-
-## 13. First deployment — правильний порядок
-
-Повний zero-to-production порядок є в [`HANDOFF.md`](./HANDOFF.md). Скорочено:
-
-1. GitHub repo готовий.
-2. Telegram bot створений.
-3. Anthropic key створений.
-4. GitHub fine-grained token створений.
-5. Import GitHub repo into Vercel.
-6. Add Environment Variables.
-7. Deploy.
-8. Attach final domain.
-9. Set `SITE_URL` to final domain.
-10. Redeploy.
-11. Open `/api/setup` and Register webhook.
-12. Open Telegram bot and press Start.
-13. Tap `🆔 My ID`.
-14. Put that ID into `ADMIN_ID`.
-15. Redeploy.
-16. Publish test article.
-17. Confirm GitHub `.md` commit.
-18. Confirm Vercel deployment.
-19. Confirm article URL, `/llms.txt`, `/llms-full.txt`, `/sitemap.xml`.
-
----
-
-## 14. Client handoff mental model
-
-Під час handoff **код не переписується**.
-
-Змінюється ownership/credentials/configuration:
-
-```mermaid
-flowchart TB
-  R[Same codebase] --> GR[Client GitHub repo]
-  R --> VP[Client Vercel project]
-  R --> TB[Client Telegram bot/token]
-  R --> AK[Client Anthropic key]
-  R --> GT[Client GitHub token]
-  R --> D[Client domain]
-```
-
-Немає hidden state на нашому сервері, бо нашого сервера немає.
-
-Після передачі клієнту ми можемо revoke/delete наші credentials, і production продовжить працювати на credentials клієнта.
-
----
-
-## 15. Domain replacement
-
-При зміні домену з:
-
-```text
-https://old.example.com
-```
-
-на:
-
-```text
-https://blog.client.com
-```
-
-потрібно:
-
-1. додати/перенести domain у Vercel;
-2. перевірити DNS;
-3. змінити `SITE_URL=https://blog.client.com`;
-4. redeploy;
-5. відкрити `https://blog.client.com/api/setup`;
-6. Register / re-register webhook;
-7. Check webhook status;
-8. test bot publish.
-
-Причина: `SITE_URL` використовується і для canonical URLs, і для Telegram webhook URL, і для links у bot responses, і для `llms.txt`.
-
----
-
-## 16. Telegram bot replacement
-
-Якщо клієнт створює зовсім нового бота:
-
-1. за можливості Delete webhook старого бота через `/api/setup` до зміни token;
-2. замінити `TELEGRAM_BOT_TOKEN` у Vercel;
-3. redeploy;
-4. Register webhook через `/api/setup`;
-5. відкрити нового бота -> Start;
-6. `🆔 My ID`;
-7. update `ADMIN_ID` / `ALLOWED_IDS`;
-8. redeploy;
-9. test publish.
-
-`WEBHOOK_SECRET` можна залишити тим самим або rotate. Якщо rotate — після redeploy обов'язково Register webhook ще раз.
-
----
-
-## 17. GitHub repo ownership replacement
-
-Після GitHub Transfer ownership або переходу на новий client repo:
-
-1. переконатися, що Vercel Git integration має доступ до нового repo;
-2. update:
-   - `GITHUB_OWNER`;
-   - `GITHUB_REPO`;
-   - `GITHUB_BRANCH`;
-3. створити **client-owned** fine-grained PAT для нового repo;
-4. replace `GITHUB_TOKEN`;
-5. redeploy;
-6. publish test article from Telegram;
-7. verify commit appears саме в client repo;
-8. verify commit triggers Vercel deployment.
-
-Webhook re-registration не потрібна, якщо domain/bot/webhook secret не змінювались.
-
----
-
-## 18. Security boundaries
-
-### Public
-
-- static site;
-- `/llms.txt`;
-- `/llms-full.txt`;
-- `/sitemap.xml`;
-- `/api/telegram` URL itself;
-- `/api/setup` page itself.
-
-### Secret
-
-- `TELEGRAM_BOT_TOKEN`;
-- `ANTHROPIC_API_KEY`;
-- `GITHUB_TOKEN`;
-- `WEBHOOK_SECRET`;
-- `SETUP_SECRET`.
-
-`/api/telegram` може бути public URL — це нормально. Security не базується на тому, що URL ніхто не знає. Кожен Telegram request перевіряється по secret header.
-
-`/api/setup` також public URL, але будь-яка mutation потребує `SETUP_SECRET`.
-
----
-
-## 19. Troubleshooting
-
-### Bot does not answer at all
-
-1. Open `/api/setup`.
-2. Check webhook status.
-3. Verify Telegram reports the expected URL.
-4. Verify `last_error_message` if present.
-5. Make sure production URL is not protected by Vercel Authentication/Deployment Protection in a way that blocks Telegram.
-6. If domain or secret changed, Register again.
-
-### `/api/telegram` returns `401`
-
-`WEBHOOK_SECRET` у Vercel не збігається з secret stored by Telegram.
-
-Fix:
-
-1. redeploy with correct `WEBHOOK_SECRET`;
-2. `/api/setup` -> Register / re-register.
-
-### Telegram says publishing is disabled
-
-Tap `🆔 My ID`, then add it to:
-
-```text
-ADMIN_ID=<id>
-```
-
-or:
-
-```text
-ALLOWED_IDS=123456,987654
-```
-
-Redeploy. Re-register webhook is **not** required.
-
-### GitHub 401/403
-
-Check:
-
-- token not expired/revoked;
-- correct `GITHUB_OWNER`;
-- correct `GITHUB_REPO`;
-- fine-grained token has selected repository;
-- `Contents: Read and write`.
-
-### Article commits, but Vercel does not deploy
-
-The publishing Function did its job. The Git integration is the failing link.
-
-Check that Vercel project is connected to the same repo/branch configured by `GITHUB_OWNER/GITHUB_REPO/GITHUB_BRANCH`.
-
-### Build fails: `ANTHROPIC_API_KEY is required`
-
-Add Anthropic key to the **Production** Environment in Vercel and redeploy.
-
-### Build fails: `SITE_URL is required`
-
-Set full URL including `https://`, e.g.:
+1. Attach domain in Vercel.
+2. Configure DNS.
+3. Set:
 
 ```text
 SITE_URL=https://blog.client.com
 ```
 
-### Claude API 400 after model migration
+4. Redeploy.
+5. `/api/setup` → Register / re-register webhook.
 
-Check `ANTHROPIC_MODEL`. Current default for this repo is:
+## New Telegram bot
+
+1. Replace `TELEGRAM_BOT_TOKEN`.
+2. Redeploy.
+3. `/api/setup` → Register webhook.
+4. Start the new bot.
+5. Re-check `ADMIN_ID` / `ALLOWED_IDS`.
+
+## New Anthropic key
+
+Replace:
 
 ```text
-claude-sonnet-5
+ANTHROPIC_API_KEY
 ```
 
-The model is deliberately configurable so future migration is one Vercel variable change.
+Redeploy. No Telegram webhook change required.
 
-### `/llms.txt` is stale
+## Rotate webhook secret
 
-`llms.txt` is a build artifact, not a runtime endpoint. Confirm the commit produced a successful new deployment. Opening the old deployment URL will still show its old artifact.
+Replace `WEBHOOK_SECRET`, redeploy, then re-register the webhook. If you forget the second step, Telegram continues sending the old secret and `/api/telegram` returns 401.
+
+See [`HANDOFF.md`](./HANDOFF.md) for the operational checklist.
 
 ---
 
-## 20. Local development
+# 16. Security boundaries
 
-Create local variables from `.env.example` if needed.
-
-To build without paying for Claude calls during purely structural local validation:
-
-```bash
-cd astro
-npm install
-SKIP_LLM_GENERATION=1 SITE_URL=http://localhost:4321 npm run build
-```
-
-`SKIP_LLM_GENERATION=1` is only a developer convenience. Do not set it in Vercel Production.
-
-Production should have:
+Public URLs:
 
 ```text
-ANTHROPIC_API_KEY=...
-ANTHROPIC_MODEL=claude-sonnet-5
+/
+/articles/*
+/cases
+/llms.txt
+/llms-full.txt
+/sitemap.xml
+/robots.txt
+/api/telegram
+/api/setup
+```
+
+`/api/telegram` being public is normal. Security comes from Telegram's secret-token header verification.
+
+`/api/setup` being public is also acceptable because every mutation requires `SETUP_SECRET`.
+
+Never expose:
+
+```text
+TELEGRAM_BOT_TOKEN
+ANTHROPIC_API_KEY
+GITHUB_TOKEN
+WEBHOOK_SECRET
+SETUP_SECRET
 ```
 
 ---
 
-## 21. ТЗ compliance map
+# 17. Troubleshooting
 
-| ТЗ | Implementation |
+## Bot does not respond
+
+1. Open `/api/setup`.
+2. Check webhook status.
+3. Confirm webhook URL equals `SITE_URL + /api/telegram`.
+4. Check Telegram `last_error_message`.
+5. Confirm Vercel deployment protection does not block Telegram.
+
+## `/api/telegram` returns 401
+
+`WEBHOOK_SECRET` in Vercel differs from the secret stored by Telegram.
+
+Fix:
+
+1. redeploy with correct secret;
+2. `/api/setup` → Register / re-register.
+
+## Publishing is locked
+
+`🆔 My ID` works even before authorization. Put the returned ID into:
+
+```text
+ADMIN_ID=<number>
+```
+
+or add it to:
+
+```text
+ALLOWED_IDS=123,456
+```
+
+Then redeploy. No webhook re-registration.
+
+## GitHub 401/403
+
+Check:
+
+- PAT still valid;
+- selected repository is correct;
+- `Contents: Read and write` permission;
+- `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_BRANCH`.
+
+## Markdown commits but Vercel does not deploy
+
+The Telegram/GitHub path succeeded; the Vercel Git integration is misconfigured. Ensure the project watches the same repo/branch that the bot writes to.
+
+## Anthropic is missing/down
+
+Telegram-generated Key Takeaways require the API key when the article has no manual summary. Build-time `llms.txt` has a deterministic fallback so an Anthropic outage does not take the whole site offline.
+
+## `llms.txt` appears stale
+
+It is a build artifact. Verify a new GitHub commit produced a successful Vercel deployment and that you are opening the current production alias, not an older immutable deployment URL.
+
+---
+
+# 18. TЗ compliance map
+
+| Requirement | Implementation |
 |---|---|
-| Astro / static generation | `astro/`, `output: 'static'` |
-| Tailwind CSS | Tailwind + PostCSS in `astro/` |
-| Local Markdown database | `src/content/articles`, `src/content/cases` |
-| GitHub + Vercel | GitHub source + `vercel.json` |
-| Answer-First Key Takeaways | `ArticleLayout.astro` + Claude/manual input |
-| H1/H2/H3 | H1 layout + Markdown body hierarchy |
-| JSON-LD | `TechArticle` / `Article` layouts |
-| `/llms.txt` | build-time Claude generation |
-| `/llms-full.txt` | direct Markdown aggregation |
-| CTA under articles | `ArticleLayout.astro` |
-| Social share | `Share.astro` |
-| Cases | section on homepage + canonical detail routes |
-| Telegram automation | `/api/telegram` |
-| `.md` appears in GitHub | GitHub Contents API |
-| Auto deployment | Vercel Git integration after commit |
-| Mobile/desktop | responsive Tailwind layout |
-| Ownership handoff | no hardcoded credentials; see `HANDOFF.md` |
+| Astro SSG | `astro/` static build |
+| Tailwind | `astro/tailwind.config.mjs` + global styles |
+| Markdown content | `src/content/articles`, `src/content/cases` |
+| GitHub + Vercel | repository + `vercel.json` |
+| homepage articles + cases | `/` contains both direct sections |
+| Answer-First | original `ArticleLayout.astro` Key Takeaways block |
+| H1/H2/H3 | article layout + Markdown headings |
+| TechArticle/Article schema | `TechArticle` JSON-LD on article pages |
+| `/llms.txt` | build-time Claude summaries |
+| `/llms-full.txt` | direct full Markdown aggregation |
+| Telegram CTA | under each article |
+| social sharing | original rich `Share.astro` |
+| Telegram publishing | `/api/telegram` button CMS |
+| GitHub `.md` creation | Contents API |
+| auto deploy | GitHub → Vercel integration |
+| no typed commands | persistent keyboard + inline buttons |
+| client handoff | all credentials/config externalized to Vercel |
+
+The TЗ requires the site to be Astro/SSG, Markdown-based, contain Answer-First Key Takeaways, JSON-LD, root `/llms.txt`, Telegram CTA/share buttons, a cases section, Telegram → GitHub → Vercel publication automation, and transferable GitHub/domain ownership. The implementation above maps directly to those requirements.
 
 ---
 
-## 22. Official documentation used by this implementation
+# 19. Definition of done before client handoff
 
-- Vercel Functions: https://vercel.com/docs/functions
-- Vercel Environment Variables: https://vercel.com/docs/environment-variables
-- Telegram Bot API (`setWebhook`, `secret_token`, buttons): https://core.telegram.org/bots/api
-- GitHub Contents API: https://docs.github.com/en/rest/repos/contents
-- Claude Messages API: https://platform.claude.com/docs/en/api/messages/create
-- Claude authentication: https://platform.claude.com/docs/en/manage-claude/authentication
-- Claude Sonnet 5: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
-
----
-
-## 23. Production definition of done
-
-Перед передачею клієнту перевірити всі пункти:
-
-- [ ] client GitHub repo contains full project;
-- [ ] Vercel connected to correct repo + production branch;
-- [ ] final domain resolves to Vercel;
-- [ ] all Production env vars set;
-- [ ] credentials belong to client, not developer;
-- [ ] `/api/setup` reports correct webhook URL;
-- [ ] Telegram Start shows button CMS;
-- [ ] test article can be published without typed commands;
-- [ ] `.md` appears in GitHub;
-- [ ] deployment starts automatically;
-- [ ] homepage shows article;
-- [ ] homepage shows cases section;
-- [ ] article has Key Takeaways;
-- [ ] article has JSON-LD in HTML;
-- [ ] `/llms.txt` works;
-- [ ] `/llms-full.txt` works;
-- [ ] `/sitemap.xml` works;
-- [ ] CTA + share links work;
-- [ ] developer credentials revoked after client confirms production.
+- [ ] client owns GitHub repo;
+- [ ] client owns Vercel project;
+- [ ] Vercel watches correct `main` branch;
+- [ ] client owns Telegram bot/token;
+- [ ] client owns Anthropic key;
+- [ ] client owns GitHub PAT;
+- [ ] final `SITE_URL` is set;
+- [ ] webhook registered on final URL;
+- [ ] button CMS opens after Start;
+- [ ] no typed commands required;
+- [ ] article publish creates `.md`;
+- [ ] case publish creates `.md`;
+- [ ] GitHub commit triggers production deployment;
+- [ ] homepage shows articles + cases only;
+- [ ] article reading page has Key Takeaways + share + Telegram CTA;
+- [ ] article HTML contains `TechArticle` JSON-LD;
+- [ ] `/llms.txt` returns 200;
+- [ ] `/llms-full.txt` returns 200;
+- [ ] `/sitemap.xml` contains only real routes;
+- [ ] old developer credentials are revoked after acceptance.
