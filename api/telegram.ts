@@ -5,15 +5,20 @@ import {
 import { generateKeyTakeaways } from './_lib/anthropic';
 import { commitFile } from './_lib/github';
 import {
-  buildArticlePreview, parseArticlePreview, parseCaseSubmission, parseSubmission,
+  buildArticlePreview, parseArticlePreview, parseSubmission,
   toArticleMarkdown, toCaseMarkdown,
 } from './_lib/markdown';
 import { answerCallbackQuery, editMessageText, sendMessage } from './_lib/telegram';
 
+type CaseFieldKey = 'title' | 'client' | 'url' | 'result' | 'description' | 'notes';
+type CaseDraft = Record<CaseFieldKey, string>;
+
+const CASE_FIELD_KEYS: CaseFieldKey[] = ['title', 'client', 'url', 'result', 'description', 'notes'];
+
 export default {
   async fetch(request: Request) {
     if (request.method === 'GET') {
-      return Response.json({ ok: true, service: 'ProPersonal Telegram webhook' });
+      return Response.json({ ok: true, service: 'ProPersonal Telegram CMS' });
     }
     if (request.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
 
@@ -35,7 +40,9 @@ export default {
     } catch (error: any) {
       console.error('telegram webhook error', error);
       const chatId = update.message?.chat?.id || update.channel_post?.chat?.id || update.callback_query?.message?.chat?.id;
-      if (chatId) await sendMessage(chatId, `⚠️ ${error?.message || 'Unknown error'}`, menu()).catch(() => {});
+      if (chatId) {
+        await sendMessage(chatId, `⚠️ Помилка: ${localizeError(error?.message || 'невідома помилка')}`, menu()).catch(() => {});
+      }
     }
 
     return Response.json({ ok: true });
@@ -47,60 +54,66 @@ async function handleMessage(message: any) {
   const fromId = message.from?.id ?? chatId;
   const text = (message.text || message.caption || '').trim();
 
-  // Telegram's native Start button sends /start. The author never needs to type commands.
+  // Нативна кнопка Start у Telegram технічно надсилає /start. Користувач не вводить команди вручну.
   if (text === '/start') return void (await showHome(chatId, fromId));
-  if (text === CMS.idButton) return void (await sendMessage(chatId, `Your Telegram ID: ${fromId}`, menu()));
+  if (text === CMS.idButton) return void (await sendMessage(chatId, `Ваш Telegram ID: ${fromId}`, menu()));
   if (text === CMS.helpButton) return void (await sendMessage(chatId, HELP, { ...menu(), parse_mode: 'HTML' }));
   if (text === CMS.statusButton) return void (await showStatus(chatId, fromId));
 
   if (!isAllowed(fromId)) {
     return void (await sendMessage(
       chatId,
-      `⛔ Publishing is disabled for this account.\n\nYour Telegram ID: ${fromId}\nAdd it to ALLOWED_IDS in Vercel, redeploy, then try again.`,
+      `⛔ Публікацію для цього акаунта вимкнено.\n\nВаш Telegram ID: ${fromId}\nДодайте його до ALLOWED_IDS у Vercel і зробіть повторний деплой.`,
       menu(),
     ));
   }
 
   if (text === CMS.articleButton) {
     return void (await sendMessage(chatId, CMS.articlePrompt, {
-      ...menu(),
-      reply_markup: { force_reply: true, input_field_placeholder: 'Title, blank line, article…' },
+      reply_markup: { force_reply: true, input_field_placeholder: 'Заголовок, порожній рядок, текст статті…' },
     }));
   }
 
   if (text === CMS.caseButton) {
-    return void (await sendMessage(chatId, CMS.casePrompt, {
-      ...menu(),
-      reply_markup: { force_reply: true, input_field_placeholder: 'Title, fields, optional notes…' },
+    return void (await sendMessage(chatId, buildCaseDraftText(emptyCaseDraft()), {
+      reply_markup: caseKeyboard(),
+      disable_web_page_preview: true,
     }));
+  }
+
+  const replied = message.reply_to_message?.text || '';
+  if (replied.startsWith(CMS.caseEditPrefix)) {
+    return void (await saveCaseFieldReply(message));
   }
 
   if (isArticlePreview(message.reply_to_message)) {
     const preview = message.reply_to_message;
     const existing = parseArticlePreview(preview);
     const keyTakeaways = text.replace(/^(key takeaways|kt|ключові висновки)\s*:\s*/i, '').trim();
-    if (!keyTakeaways) return void (await sendMessage(chatId, 'Key Takeaways cannot be empty.', menu()));
+    if (!keyTakeaways) return void (await sendMessage(chatId, 'Ключові висновки не можуть бути порожніми.', menu()));
 
     const previewData = buildArticlePreview(existing.title, keyTakeaways, existing.bodyText, existing.bodyEntities);
     await editMessageText(chatId, preview.message_id, previewData.text, {
       entities: previewData.entities,
       reply_markup: articleKeyboard(),
     });
-    return void (await sendMessage(chatId, '✅ Key Takeaways updated.', menu()));
+    return void (await sendMessage(chatId, '✅ Ключові висновки збережено.', menu()));
   }
 
-  const replied = message.reply_to_message?.text || '';
-  if (replied.startsWith('📝 NEW ARTICLE')) return void (await prepareArticle(message));
-  if (replied.startsWith('💼 NEW CASE')) return void (await prepareCase(message));
+  if (replied.startsWith('📝 НОВА СТАТТЯ')) return void (await prepareArticle(message));
 
-  return void (await sendMessage(chatId, 'Choose an action using the buttons below.', menu()));
+  return void (await sendMessage(chatId, 'Оберіть дію кнопками нижче.', menu()));
 }
 
 async function prepareArticle(message: any) {
   const chatId = message.chat.id;
   const source = parseSubmission(message);
   if (!source.title || !source.bodyText) {
-    return await sendMessage(chatId, `Need a title, a blank line, and article body. Tap “${CMS.articleButton}” and try again.`, menu());
+    return await sendMessage(
+      chatId,
+      `Потрібні заголовок, порожній рядок і текст статті. Натисніть «${CMS.articleButton}» та спробуйте ще раз.`,
+      menu(),
+    );
   }
 
   const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
@@ -112,27 +125,43 @@ async function prepareArticle(message: any) {
   });
 }
 
-async function prepareCase(message: any) {
+async function saveCaseFieldReply(message: any) {
   const chatId = message.chat.id;
-  const source = parseCaseSubmission(message);
-  if (!source.title || (!source.description && !source.url && !source.bodyText)) {
-    return await sendMessage(chatId, `Need a case title plus description, URL, or body. Tap “${CMS.caseButton}” and try again.`, menu());
+  const prompt = message.reply_to_message?.text || '';
+  const field = fieldFromPrompt(prompt);
+  const draftMessageId = Number(prompt.match(/Чернетка #(\d+)/)?.[1] || '0');
+  const markerIndex = prompt.indexOf(CMS.caseDraftMarker);
+
+  if (!field || !draftMessageId || markerIndex < 0) {
+    return await sendMessage(chatId, 'Не вдалося відновити чернетку. Відкрийте «Новий кейс» і спробуйте ще раз.', menu());
   }
 
-  const preview = [
-    source.title,
-    source.client ? `Client: ${source.client}` : '',
-    source.url ? `URL: ${source.url}` : '',
-    source.result ? `Result: ${source.result}` : '',
-    `Description: ${source.description}`,
-  ].filter(Boolean).join('\n\n');
+  const snapshot = prompt.slice(markerIndex + CMS.caseDraftMarker.length).trim();
+  const draft = parseCaseDraftText(snapshot);
+  let value = (message.text || message.caption || '').trim();
+  if (value === CMS.clearValue) value = '';
 
-  await sendMessage(chatId, preview, {
-    entities: [{ type: 'bold', offset: 0, length: source.title.length }],
+  const fieldConfig = CMS.caseFields[field];
+  if (value.length > fieldConfig.maxLength) {
+    return await sendMessage(
+      chatId,
+      `Поле «${fieldConfig.label}» задовге. Максимум — ${fieldConfig.maxLength} символів.`,
+      menu(),
+    );
+  }
+
+  if (field === 'url' && value && !/^https?:\/\//i.test(value)) {
+    return await sendMessage(chatId, 'Посилання має починатися з http:// або https://.', menu());
+  }
+
+  draft[field] = field === 'notes' ? value : value.replace(/\s+/g, ' ').trim();
+
+  await editMessageText(chatId, draftMessageId, buildCaseDraftText(draft), {
     reply_markup: caseKeyboard(),
-    reply_parameters: { message_id: message.message_id },
     disable_web_page_preview: true,
   });
+
+  await sendMessage(chatId, `✅ Поле «${fieldConfig.label}» збережено.`, menu());
 }
 
 async function handleCallback(callback: any) {
@@ -142,21 +171,36 @@ async function handleCallback(callback: any) {
   const action = callback.data || '';
 
   if (!chatId || !messageId) return;
-  if (!isAllowed(fromId)) return void (await answerCallbackQuery(callback.id, 'Publishing is not allowed for this account.', true));
+  if (!isAllowed(fromId)) {
+    return void (await answerCallbackQuery(callback.id, 'Публікацію для цього акаунта вимкнено.', true));
+  }
 
   if (action === 'cancel') {
-    await answerCallbackQuery(callback.id, 'Cancelled');
-    return void (await editMessageText(chatId, messageId, '❌ Draft cancelled.'));
+    await answerCallbackQuery(callback.id, 'Скасовано');
+    return void (await editMessageText(chatId, messageId, '❌ Чернетку скасовано.'));
+  }
+
+  if (action.startsWith('case_edit:')) {
+    const field = action.slice('case_edit:'.length) as CaseFieldKey;
+    if (!CASE_FIELD_KEYS.includes(field)) return void (await answerCallbackQuery(callback.id));
+
+    const draft = parseCaseDraftText(callback.message.text || '');
+    await answerCallbackQuery(callback.id, `Редагування: ${CMS.caseFields[field].label}`);
+    return void (await sendCaseFieldPrompt(chatId, messageId, field, draft));
   }
 
   if (action === 'edit_kt') {
-    return void (await answerCallbackQuery(callback.id, 'Reply directly to this preview with your new 3–4 sentence Key Takeaways.', true));
+    return void (await answerCallbackQuery(
+      callback.id,
+      'Відповідайте безпосередньо на прев’ю новими ключовими висновками (3–4 речення).',
+      true,
+    ));
   }
 
   if (action === 'regen_kt') {
     const original = callback.message.reply_to_message;
-    if (!original) return void (await answerCallbackQuery(callback.id, 'Original article not found.', true));
-    await answerCallbackQuery(callback.id, 'Regenerating…');
+    if (!original) return void (await answerCallbackQuery(callback.id, 'Оригінальну статтю не знайдено.', true));
+    await answerCallbackQuery(callback.id, 'Генерую знову…');
     const source = parseSubmission(original);
     const keyTakeaways = await generateKeyTakeaways(source.bodyText);
     const preview = buildArticlePreview(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
@@ -168,45 +212,72 @@ async function handleCallback(callback: any) {
 
   if (action === 'publish_article') {
     const original = callback.message.reply_to_message;
-    if (!original) return void (await answerCallbackQuery(callback.id, 'Original article not found.', true));
-    await answerCallbackQuery(callback.id, 'Publishing…');
+    if (!original) return void (await answerCallbackQuery(callback.id, 'Оригінальну статтю не знайдено.', true));
+    await answerCallbackQuery(callback.id, 'Публікую…');
 
     const source = parseSubmission(original);
     const preview = parseArticlePreview(callback.message);
-    const keyTakeaways = preview.keyTakeaways.startsWith('Key Takeaways will be generated')
+    const keyTakeaways = preview.keyTakeaways.startsWith('Ключові висновки буде згенеровано')
       ? ''
       : preview.keyTakeaways;
     const post = toArticleMarkdown(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
     await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article: ${post.slug}`);
-    return void (await editMessageText(chatId, messageId, `✅ Published\n${SITE_URL}/articles/${post.slug}`, {
+    return void (await editMessageText(chatId, messageId, `✅ Статтю опубліковано\n${SITE_URL}/articles/${post.slug}`, {
       disable_web_page_preview: true,
     }));
   }
 
   if (action === 'publish_case') {
-    const original = callback.message.reply_to_message;
-    if (!original) return void (await answerCallbackQuery(callback.id, 'Original case not found.', true));
-    await answerCallbackQuery(callback.id, 'Publishing…');
+    const draft = parseCaseDraftText(callback.message.text || '');
+    if (!draft.title) {
+      return void (await answerCallbackQuery(callback.id, 'Спочатку заповніть назву кейсу.', true));
+    }
+    if (!draft.description && !draft.url && !draft.notes) {
+      return void (await answerCallbackQuery(callback.id, 'Додайте опис, посилання або нотатки.', true));
+    }
 
-    const source = parseCaseSubmission(original);
-    const post = toCaseMarkdown(source.title, source.bodyText, source.bodyEntities, {
-      client: source.client,
-      url: source.url,
-      result: source.result,
-      description: source.description,
+    await answerCallbackQuery(callback.id, 'Публікую кейс…');
+    const post = toCaseMarkdown(draft.title, draft.notes, [], {
+      client: draft.client,
+      url: draft.url,
+      result: draft.result,
+      description: draft.description,
     });
     await commitFile(`${CASE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish case: ${post.slug}`);
 
-    const destination = source.url ? `\nExternal source: ${source.url}` : '';
+    const external = draft.url ? `\nЗовнішнє джерело: ${draft.url}` : '';
     return void (await editMessageText(
       chatId,
       messageId,
-      `✅ Case published\n${SITE_URL}/#case-${post.slug}${destination}`,
+      `✅ Кейс опубліковано\n${SITE_URL}/#case-${post.slug}${external}`,
       { disable_web_page_preview: true },
     ));
   }
 
   await answerCallbackQuery(callback.id);
+}
+
+async function sendCaseFieldPrompt(chatId: number, draftMessageId: number, field: CaseFieldKey, draft: CaseDraft) {
+  const config = CMS.caseFields[field];
+  const current = draft[field] || CMS.clearValue;
+  const prompt = [
+    `${CMS.caseEditPrefix} ${config.label}`,
+    '',
+    `Поточне значення: ${current}`,
+    `Відповідайте на це повідомлення новим значенням. Щоб очистити поле, надішліть «${CMS.clearValue}».`,
+    '',
+    `Чернетка #${draftMessageId}`,
+    CMS.caseDraftMarker,
+    buildCaseDraftText(draft),
+  ].join('\n');
+
+  await sendMessage(chatId, prompt, {
+    reply_markup: {
+      force_reply: true,
+      input_field_placeholder: `Нове значення: ${config.label.toLowerCase()}…`,
+    },
+    disable_web_page_preview: true,
+  });
 }
 
 async function handleChannelPost(message: any) {
@@ -218,23 +289,25 @@ async function handleChannelPost(message: any) {
   const keyTakeaways = source.keyTakeaways || await generateKeyTakeaways(source.bodyText);
   const post = toArticleMarkdown(source.title, keyTakeaways, source.bodyText, source.bodyEntities);
   await commitFile(`${ARTICLE_PATH}/${post.date}-${post.slug}.md`, post.content, `publish article from channel: ${post.slug}`);
-  await sendMessage(chatId, `✅ Published: ${SITE_URL}/articles/${post.slug}`, { disable_web_page_preview: true });
+  await sendMessage(chatId, `✅ Статтю опубліковано: ${SITE_URL}/articles/${post.slug}`, { disable_web_page_preview: true });
 }
 
 async function showHome(chatId: number, fromId: number) {
   const allowed = isAllowed(fromId);
   const intro = allowed
-    ? 'ProPersonal CMS is ready. Choose what you want to publish.'
-    : `ProPersonal CMS\n\nYour Telegram ID: ${fromId}\nPublishing is locked until this ID is added to ALLOWED_IDS in Vercel.`;
+    ? 'ProPersonal CMS готова. Оберіть, що хочете опублікувати.'
+    : `ProPersonal CMS\n\nВаш Telegram ID: ${fromId}\nПублікація заблокована, доки цей ID не буде додано до ALLOWED_IDS у Vercel.`;
   await sendMessage(chatId, intro, menu());
 }
 
 async function showStatus(chatId: number, fromId: number) {
-  if (fromId !== ADMIN_ID) return void (await sendMessage(chatId, `Your Telegram ID: ${fromId}`, menu()));
+  if (fromId !== ADMIN_ID) return void (await sendMessage(chatId, `Ваш Telegram ID: ${fromId}`, menu()));
   const missing = missingRuntimeConfig();
   await sendMessage(
     chatId,
-    missing.length ? `⚠️ Missing Vercel variables:\n${missing.join('\n')}` : '✅ Runtime configuration looks complete.',
+    missing.length
+      ? `⚠️ У Vercel бракує змінних:\n${missing.join('\n')}`
+      : '✅ Основна конфігурація CMS заповнена.',
     menu(),
   );
 }
@@ -255,19 +328,82 @@ function menu() {
 function articleKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: '✅ Publish article', callback_data: 'publish_article' }, { text: '❌ Cancel', callback_data: 'cancel' }],
-      [{ text: '✍️ Edit Key Takeaways', callback_data: 'edit_kt' }, { text: '♻️ Regenerate', callback_data: 'regen_kt' }],
+      [{ text: CMS.publishArticle, callback_data: 'publish_article' }, { text: CMS.cancel, callback_data: 'cancel' }],
+      [{ text: CMS.editTakeaways, callback_data: 'edit_kt' }, { text: CMS.regenerateTakeaways, callback_data: 'regen_kt' }],
     ],
   };
 }
 
 function caseKeyboard() {
   return {
-    inline_keyboard: [[
-      { text: '✅ Publish case', callback_data: 'publish_case' },
-      { text: '❌ Cancel', callback_data: 'cancel' },
-    ]],
+    inline_keyboard: [
+      [
+        { text: CMS.caseFields.title.button, callback_data: 'case_edit:title' },
+        { text: CMS.caseFields.client.button, callback_data: 'case_edit:client' },
+      ],
+      [
+        { text: CMS.caseFields.url.button, callback_data: 'case_edit:url' },
+        { text: CMS.caseFields.result.button, callback_data: 'case_edit:result' },
+      ],
+      [
+        { text: CMS.caseFields.description.button, callback_data: 'case_edit:description' },
+        { text: CMS.caseFields.notes.button, callback_data: 'case_edit:notes' },
+      ],
+      [{ text: CMS.publishCase, callback_data: 'publish_case' }],
+      [{ text: CMS.cancel, callback_data: 'cancel' }],
+    ],
   };
+}
+
+function emptyCaseDraft(): CaseDraft {
+  return { title: '', client: '', url: '', result: '', description: '', notes: '' };
+}
+
+function buildCaseDraftText(draft: CaseDraft) {
+  const value = (key: CaseFieldKey) => draft[key] || CMS.clearValue;
+  return [
+    CMS.caseDraftTitle,
+    '',
+    `${CMS.caseFields.title.label}: ${value('title')}`,
+    `${CMS.caseFields.client.label}: ${value('client')}`,
+    `${CMS.caseFields.url.label}: ${value('url')}`,
+    `${CMS.caseFields.result.label}: ${value('result')}`,
+    `${CMS.caseFields.description.label}: ${value('description')}`,
+    '',
+    `${CMS.caseFields.notes.label}:`,
+    value('notes'),
+  ].join('\n');
+}
+
+function parseCaseDraftText(text: string): CaseDraft {
+  const draft = emptyCaseDraft();
+  const normalized = text.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const notesLabel = `${CMS.caseFields.notes.label}:`;
+  const notesIndex = lines.findIndex((line) => line.trim() === notesLabel);
+
+  for (const key of CASE_FIELD_KEYS.filter((item) => item !== 'notes')) {
+    const prefix = `${CMS.caseFields[key].label}:`;
+    const line = lines.find((item) => item.startsWith(prefix));
+    if (!line) continue;
+    const parsed = line.slice(prefix.length).trim();
+    draft[key] = parsed === CMS.clearValue ? '' : parsed;
+  }
+
+  if (notesIndex >= 0) {
+    const parsed = lines.slice(notesIndex + 1).join('\n').trim();
+    draft.notes = parsed === CMS.clearValue ? '' : parsed;
+  }
+
+  return draft;
+}
+
+function fieldFromPrompt(prompt: string): CaseFieldKey | null {
+  const firstLine = prompt.split('\n')[0] || '';
+  for (const key of CASE_FIELD_KEYS) {
+    if (firstLine === `${CMS.caseEditPrefix} ${CMS.caseFields[key].label}`) return key;
+  }
+  return null;
 }
 
 function isArticlePreview(message: any) {
@@ -277,10 +413,15 @@ function isArticlePreview(message: any) {
   );
 }
 
+function localizeError(message: string) {
+  return message
+    .replace('TELEGRAM_BOT_TOKEN is not configured.', 'не налаштовано TELEGRAM_BOT_TOKEN.')
+    .replace('Case URL must start with http:// or https://', 'посилання кейсу має починатися з http:// або https://')
+    .replace('Not Found', 'не знайдено');
+}
+
 const HELP =
-  '<b>Publishing flow</b>\n\n' +
-  `1. Tap <b>${CMS.articleButton}</b> or <b>${CMS.caseButton}</b>.\n` +
-  '2. Reply to the prompt and review the preview.\n' +
-  '3. Use the inline Publish / Cancel buttons.\n\n' +
-  '<b>Articles:</b> optionally add <code>Key Takeaways: …</code>; otherwise Claude generates them.\n\n' +
-  '<b>Cases:</b> optionally add <code>Client:</code>, <code>URL:</code>, <code>Result:</code>, and <code>Description:</code>. When URL is present, the case card opens that external source. No Vercel config change is needed per case.';
+  '<b>Публікація контенту</b>\n\n' +
+  `<b>Стаття</b>\n1. Натисніть <b>${CMS.articleButton}</b>.\n2. Надішліть заголовок, порожній рядок і текст.\n3. Перевірте прев’ю та натисніть «${CMS.publishArticle}».\n\n` +
+  '<b>Кейс</b>\n1. Натисніть <b>💼 Новий кейс</b>.\n2. У чернетці натискайте окремі кнопки «Назва», «Клієнт», «Посилання», «Результат», «Опис», «Нотатки» та заповнюйте лише потрібні поля.\n3. Кожна відповідь одразу зберігається в чернетці.\n4. Натисніть <b>✅ Опублікувати кейс</b>.\n\n' +
+  'Якщо у кейсу задано «Посилання», його картка на сайті відкриватиме зовнішнє джерело. Для цього не потрібно змінювати Vercel-конфігурацію.';
