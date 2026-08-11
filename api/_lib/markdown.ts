@@ -151,7 +151,7 @@ export function toArticleMarkdown(
   const date = publishedAt.slice(0, 10);
   const slug = options.slug || slugify(title);
   const rawMarkdownBody = bodyEntities.length ? applyEntities(bodyText, bodyEntities) : bodyText;
-  const markdownBody = normalizeHeadingSyntax(rawMarkdownBody);
+  const markdownBody = preserveTelegramLineBreaks(normalizeHeadingSyntax(rawMarkdownBody));
   const content = [
     '---',
     `title: "${yamlEscape(title)}"`,
@@ -263,8 +263,18 @@ function skipParagraphWhitespace(text: string, start: number) {
 
 function normalizeHeadingSyntax(markdown: string) {
   // Telegram users commonly type `##Heading` without the Markdown-required space.
-  // Normalize ATX headings so Astro renders the intended H1-H6 hierarchy.
-  return markdown.replace(/^(#{1,6})(?=\S)/gm, '$1 ');
+  // Only insert a space after the complete hash run; never split `##` into `# #`.
+  return markdown.replace(/^(#{1,6})(?=[^\s#])/gm, '$1 ');
+}
+
+function preserveTelegramLineBreaks(markdown: string) {
+  // CommonMark collapses a single newline inside a paragraph. Telegram authors expect
+  // the line breaks they typed to remain visible, so convert soft breaks to Markdown
+  // hard breaks while leaving fenced code blocks untouched.
+  return markdown
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, index) => index % 2 === 1 ? part : part.replace(/([^\n])\n(?=[^\n])/g, '$1  \n'))
+    .join('');
 }
 
 function applyEntities(text: string, entities: Entity[]): string {
