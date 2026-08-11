@@ -1,0 +1,33 @@
+---
+export interface Props {
+  post: any;
+}
+
+const { post } = Astro.props;
+const slugFor = (entry: any) => entry.data.slug || entry.id.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+const formatDate = (date: Date | string) => new Intl.DateTimeFormat('uk-UA', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+}).format(new Date(date));
+const readingTime = (entry: any) => Math.max(1, Math.ceil((`${entry.body || ''} ${entry.data.keyTakeaways || ''}`.trim().split(/\s+/).filter(Boolean).length) / 180));
+---
+
+<article class:list={['article-row', post.data.image && 'has-image']}>
+  <a href={`/articles/${slugFor(post)}`}>
+    <div class="article-row-copy">
+      <time datetime={new Date(post.data.date).toISOString()}>{formatDate(post.data.date)}</time>
+      <h3>{post.data.title}</h3>
+      <p>{post.data.keyTakeaways}</p>
+      <small>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path d="M12 7.5v5l3 1.8"></path>
+        </svg>
+        {readingTime(post)} хв читання
+      </small>
+    </div>
+    {post.data.image && <img class="article-row-image" src={post.data.image} alt="" loading="lazy" decoding="async" />}
+    <b aria-hidden="true">→</b>
+  </a>
+</article>
