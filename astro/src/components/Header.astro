@@ -1,4 +1,5 @@
 ---
+import TelegramIcon from './TelegramIcon.astro';
 import {
   BLOG_SUBTITLE,
   SITE_MARK,
@@ -21,7 +22,7 @@ import {
       <a class="site-nav__text" href="/#articles">{UI.navArticles}</a>
       <a class="site-nav__text" href="/#cases">{UI.navCases}</a>
       <a class="telegram-link" href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z"></path></svg>
+        <TelegramIcon size={16} />
         Telegram
       </a>
     </nav>
@@ -73,7 +74,6 @@ import {
     box-shadow: 0 2px 8px rgba(245,134,52,.18);
   }
   .telegram-link:hover { background: #d96e22; color: white; }
-  .telegram-link svg { width: 16px; height: 16px; fill: currentColor; }
   @media (max-width: 820px) {
     .brand-subtitle, .brand-divider { display: none; }
     .site-header__inner { width: min(100% - 28px,1120px); }
