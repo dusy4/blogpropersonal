@@ -15,9 +15,7 @@ const formatDate=(date:Date|string)=>new Intl.DateTimeFormat('uk-UA',{day:'numer
 const readingTime=(entry:any)=>Math.max(1,Math.ceil((`${entry.body||''} ${entry.data.keyTakeaways||''}`.trim().split(/\s+/).filter(Boolean).length)/180));
 const featured=articles[0];
 const rest=articles.slice(1);
-const listVisual=rest.find((entry)=>entry.data.image)?.data.image;
 const heroStyle=featured?.data.image?`background-image:linear-gradient(90deg,rgba(8,52,48,.94),rgba(8,52,48,.76) 50%,rgba(8,52,48,.25)),url('${featured.data.image}')`:undefined;
-const listVisualStyle=listVisual?`background-image:url('${listVisual}')`:undefined;
 const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
 ---
 
@@ -47,12 +45,12 @@ const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
         </div>
         <a class="section-cta" href={ARTICLES_URL}>{UI.allArticles}<span aria-hidden="true">→</span></a>
       </div>
-      <div class:list={['articles-layout',!listVisual&&'no-visual']}>
-        {listVisual&&rest.length>0&&<div class="articles-visual" style={listVisualStyle} aria-hidden="true"><span>{UI.articlesVisualTag}</span></div>}
+      <div class="articles-layout no-visual">
         <div class="article-list">
           {rest.length?rest.map((post)=>(
-            <article class="article-row"><a href={`/articles/${slugFor(post)}`}>
-              <div><time datetime={new Date(post.data.date).toISOString()}>{formatDate(post.data.date)}</time><h3>{post.data.title}</h3><p>{post.data.keyTakeaways}</p><small><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v5l3 1.8"></path></svg>{readingTime(post)} хв читання</small></div>
+            <article class:list={['article-row',post.data.image&&'has-image']}><a href={`/articles/${slugFor(post)}`}>
+              <div class="article-row-copy"><time datetime={new Date(post.data.date).toISOString()}>{formatDate(post.data.date)}</time><h3>{post.data.title}</h3><p>{post.data.keyTakeaways}</p><small><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v5l3 1.8"></path></svg>{readingTime(post)} хв читання</small></div>
+              {post.data.image&&<img class="article-row-image" src={post.data.image} alt="" loading="lazy" decoding="async" />}
               <b aria-hidden="true">→</b>
             </a></article>
           )):<div class="empty-list">{UI.emptyArticles}</div>}
