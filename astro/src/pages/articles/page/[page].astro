@@ -7,8 +7,9 @@ import ArticlesArchive from '../../../components/ArticlesArchive.astro';
 const PAGE_SIZE = 10;
 
 export async function getStaticPaths() {
+  const pageSize = 10;
   const articles = await getCollection('articles');
-  const totalPages = Math.max(1, Math.ceil(articles.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(articles.length / pageSize));
 
   return Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => {
     const pageNumber = index + 2;
