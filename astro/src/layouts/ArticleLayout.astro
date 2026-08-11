@@ -2,6 +2,7 @@
 import Layout from './Layout.astro';
 import Share from '../components/Share.astro';
 import TelegramIcon from '../components/TelegramIcon.astro';
+import TelegramPlaneIcon from '../components/TelegramPlaneIcon.astro';
 import { TELEGRAM_CHANNEL_URL, SITE_URL } from '../config';
 import '../styles/article.css';
 
@@ -62,7 +63,7 @@ const jsonLd = {
         <h3>Приєднуйтесь до нашого <span>Telegram</span>-каналу</h3>
         <p>Отримуйте новини про AI-інтеграції, кейси та практичні інсайти.</p>
         <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="telegram-cta-button">
-          <TelegramIcon size={18} />
+          <TelegramPlaneIcon size={18} />
           <span>Перейти в Telegram</span>
           <b aria-hidden="true">→</b>
         </a>
