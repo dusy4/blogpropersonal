@@ -18,12 +18,25 @@
   margin-top:25px !important;
 }
 
-/* The article-list visual is one bounded thumbnail, not a column-height image. */
-.articles-visual {
-  height:179px !important;
-  min-height:179px !important;
-  align-self:start !important;
-  background-repeat:no-repeat !important;
+/* Article images belong to their article entry, never as a standalone section image. */
+.article-row.has-image > a {
+  grid-template-columns:minmax(0,1fr) 146px 28px !important;
+  gap:18px !important;
+}
+.article-row-copy {
+  min-width:0;
+}
+.article-row-image {
+  display:block;
+  width:146px;
+  height:94px;
+  justify-self:end;
+  object-fit:cover;
+  object-position:center;
+  overflow:hidden;
+  border:1px solid #e0e3dc;
+  border-radius:10px;
+  background:#eef1eb;
 }
 
 /* Compact Telegram CTA while keeping the green panel + Telegram-blue action button. */
@@ -85,10 +98,21 @@
   .featured-content {
     padding:27px 22px !important;
   }
-  .articles-visual {
-    height:170px !important;
-    min-height:170px !important;
+
+  .article-row.has-image > a {
+    grid-template-columns:minmax(0,1fr) 108px !important;
+    gap:14px !important;
+    align-items:center !important;
   }
+  .article-row.has-image > a > b {
+    display:none;
+  }
+  .article-row-image {
+    width:108px;
+    height:78px;
+    border-radius:9px;
+  }
+
   .article-telegram {
     grid-template-columns:1fr !important;
     min-height:270px !important;
@@ -121,5 +145,16 @@
   .telegram-orb svg {
     width:80px !important;
     height:80px !important;
+  }
+}
+
+@media(max-width:430px) {
+  .article-row.has-image > a {
+    grid-template-columns:minmax(0,1fr) 96px !important;
+    gap:12px !important;
+  }
+  .article-row-image {
+    width:96px;
+    height:72px;
   }
 }
