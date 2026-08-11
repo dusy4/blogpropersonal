@@ -5,6 +5,7 @@ import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import ArticleRow from '../components/ArticleRow.astro';
 import { ARTICLES_URL, CASES_URL, SITE_DESCRIPTION, SITE_NAME, UI } from '../config';
 import '../styles/homepage.css';
 
@@ -47,13 +48,7 @@ const casesArchiveExternal=/^https?:\/\//i.test(CASES_URL);
       </div>
       <div class="articles-layout no-visual">
         <div class="article-list">
-          {rest.length?rest.map((post)=>(
-            <article class:list={['article-row',post.data.image&&'has-image']}><a href={`/articles/${slugFor(post)}`}>
-              <div class="article-row-copy"><time datetime={new Date(post.data.date).toISOString()}>{formatDate(post.data.date)}</time><h3>{post.data.title}</h3><p>{post.data.keyTakeaways}</p><small><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v5l3 1.8"></path></svg>{readingTime(post)} хв читання</small></div>
-              {post.data.image&&<img class="article-row-image" src={post.data.image} alt="" loading="lazy" decoding="async" />}
-              <b aria-hidden="true">→</b>
-            </a></article>
-          )):<div class="empty-list">{UI.emptyArticles}</div>}
+          {rest.length?rest.map((post)=><ArticleRow post={post} />):<div class="empty-list">{UI.emptyArticles}</div>}
         </div>
       </div>
     </section>
