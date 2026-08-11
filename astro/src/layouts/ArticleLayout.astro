@@ -1,6 +1,7 @@
 ---
 import Layout from './Layout.astro';
 import Share from '../components/Share.astro';
+import TelegramIcon from '../components/TelegramIcon.astro';
 import { TELEGRAM_CHANNEL_URL, SITE_URL } from '../config';
 import '../styles/article.css';
 
@@ -56,19 +57,19 @@ const jsonLd = {
     <aside class="article-telegram" aria-label="Telegram">
       <div class="telegram-copy">
         <div class="telegram-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z" /></svg>
+          <TelegramIcon size={25} />
         </div>
         <h3>Приєднуйтесь до нашого <span>Telegram</span>-каналу</h3>
         <p>Отримуйте новини про AI-інтеграції, кейси та практичні інсайти.</p>
         <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener" class="telegram-cta-button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z" /></svg>
+          <TelegramIcon size={18} />
           <span>Перейти в Telegram</span>
           <b aria-hidden="true">→</b>
         </a>
       </div>
       <div class="telegram-visual" aria-hidden="true">
         <div class="telegram-orb">
-          <svg viewBox="0 0 24 24"><path d="M21 3 3.7 9.7c-1.18.47-1.17 1.13-.22 1.42l4.44 1.38 1.7 5.22c.2.58.1.81.68.81.44 0 .63-.2.87-.43l2.13-2.07 4.43 3.27c.81.45 1.4.22 1.6-.75L22 4.27C22.3 3.08 21.55 2.54 21 3Z" /></svg>
+          <TelegramIcon size={170} />
         </div>
       </div>
     </aside>
