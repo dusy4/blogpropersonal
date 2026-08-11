@@ -1,7 +1,7 @@
 /* Final presentation tuning. Static CSS only; no client-side JavaScript. */
 /* Vercel redeploy trigger: 2026-08-11 */
 
-/* Restore the previous latest-article hero proportions. */
+/* Restore the previous latest-article hero proportions on desktop. */
 .featured-hero {
   min-height:405px !important;
 }
@@ -92,11 +92,16 @@
 }
 
 @media(max-width:700px) {
+  /* Let the mobile featured card size itself to its content. The previous
+     470px minimum created a large empty block below the read-time row. */
   .featured-hero {
-    min-height:470px !important;
+    min-height:0 !important;
   }
   .featured-content {
-    padding:27px 22px !important;
+    padding:27px 22px 24px !important;
+  }
+  .featured-actions {
+    margin-top:21px !important;
   }
 
   .article-row.has-image > a {
