@@ -14,7 +14,6 @@ export interface Props {
 
 const { articles, currentPage, totalPages } = Astro.props;
 const pageHref = (page: number) => page === 1 ? '/articles' : `/articles/page/${page}`;
-const canonical = `${SITE_URL}${pageHref(currentPage)}`;
 const previousPage = currentPage > 1 ? currentPage - 1 : null;
 const nextPage = currentPage < totalPages ? currentPage + 1 : null;
 
@@ -40,14 +39,13 @@ const paginationItems: Array<number | 'ellipsis'> = (() => {
   description="Усі статті про AI-інтеграції, автоматизацію та практичне застосування технологій у бізнесі."
 >
   <Fragment slot="head">
-    <link rel="canonical" href={canonical} />
     {previousPage && <link rel="prev" href={`${SITE_URL}${pageHref(previousPage)}`} />}
     {nextPage && <link rel="next" href={`${SITE_URL}${pageHref(nextPage)}`} />}
   </Fragment>
 
   <Header slot="header" />
 
-  <main class="blog-shell archive-shell">
+  <div class="blog-shell archive-shell">
     <section class="content-section archive-section" aria-labelledby="all-articles-title">
       <div class="section-heading archive-heading">
         <div class="section-title">
@@ -100,7 +98,7 @@ const paginationItems: Array<number | 'ellipsis'> = (() => {
         </nav>
       )}
     </section>
-  </main>
+  </div>
 
   <Footer slot="footer" />
 </Layout>
